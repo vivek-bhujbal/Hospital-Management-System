@@ -20,6 +20,7 @@ def get_employees(db: Session = Depends(get_db), current_user: User = Depends(al
         if user:
             emp.name = user.name
             emp.email = user.email
+        emp.permissions = db.query(EmployeePermission).filter(EmployeePermission.employee_id == emp.id).first()
     return employees
 
 @router.post("/", response_model=EmployeeResponse)

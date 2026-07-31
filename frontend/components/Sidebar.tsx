@@ -8,6 +8,7 @@ type Role = 'patient' | 'receptionist' | 'doctor' | 'admin'
 
 interface SidebarProps {
   role: Role
+  permissions?: any
 }
 
 const MENU_ITEMS = {
@@ -20,10 +21,10 @@ const MENU_ITEMS = {
   ],
   receptionist: [
     { name: 'Home', path: '/receptionist/home' },
-    { name: 'Register patient', path: '/receptionist/register-patient' },
-    { name: 'Schedule', path: '/receptionist/schedule' },
-    { name: 'Check-in queue', path: '/receptionist/queue' },
-    { name: 'Billing', path: '/receptionist/billing' },
+    { name: 'Register patient', path: '/receptionist/register-patient', perm: 'can_register_patient' },
+    { name: 'Schedule', path: '/receptionist/schedule', perm: 'can_schedule_appointment' },
+    { name: 'Check-in queue', path: '/receptionist/queue', perm: 'can_checkin_patient' },
+    { name: 'Billing', path: '/receptionist/billing', perm: 'can_collect_billing' },
   ],
   doctor: [
     { name: 'Home', path: '/doctor/home' },
@@ -42,12 +43,19 @@ const MENU_ITEMS = {
   ]
 }
 
-export default function Sidebar({ role }: SidebarProps) {
+export default function Sidebar({ role, permissions = {} }: SidebarProps) {
   const pathname = usePathname()
-  const items = MENU_ITEMS[role] || []
+  let items = MENU_ITEMS[role] || []
+  
+  if (role === 'receptionist') {
+    items = items.filter((item: any) => {
+      if (!item.perm) return true;
+      return permissions[item.perm] !== false;
+    })
+  }
 
   return (
-    <aside className="w-64 min-h-screen bg-[#0A192F] text-white flex flex-col shadow-lg">
+    <aside className="w-64 h-full bg-[#0A192F] text-white flex flex-col shadow-lg">
       <div className="p-6 text-2xl font-bold border-b border-gray-700 tracking-wide">
         HMS Portal
       </div>

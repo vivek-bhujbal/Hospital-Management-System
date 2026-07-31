@@ -1,24 +1,12 @@
 services:
-  db:
-    image: mysql:8.0
-    container_name: hospital_db
-    restart: always
-    environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: hospital_management
-    volumes:
-      - db_data:/var/lib/mysql
-
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: hospital_backend
     restart: always
-    depends_on:
-      - db
     environment:
-      - DATABASE_URL=mysql+pymysql://root:root@db:3306/hospital_management
+      - DATABASE_URL=mysql+pymysql://root:root@host.docker.internal:3306/hospital_management
       - JWT_SECRET=your_super_secret_key
       - JWT_ALGORITHM=HS256
     ports:
@@ -36,6 +24,3 @@ services:
       - NEXT_PUBLIC_API_URL=http://backend:8000
     ports:
       - "3000:3000"
-
-volumes:
-  db_data:

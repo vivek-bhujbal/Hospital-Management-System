@@ -2,15 +2,20 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from passlib.context import CryptContext
 from app.models.all_models import User
+import os
 
-# Connect to the local MySQL server (or docker container exposed on 3307)
-# Try 3307 first (Docker), fallback to 3306 (local)
-try:
-    engine = create_engine("mysql+pymysql://root:root@localhost:3307/hospital_management")
+db_url = os.environ.get("DATABASE_URL")
+if db_url:
+    engine = create_engine(db_url)
     engine.connect()
-except:
-    engine = create_engine("mysql+pymysql://root:root@localhost:3306/hospital_management")
-    engine.connect()
+else:
+    # Try 3307 first (Docker), fallback to 3306 (local)
+    try:
+        engine = create_engine("mysql+pymysql://root:root@localhost:3307/hospital_management")
+        engine.connect()
+    except:
+        engine = create_engine("mysql+pymysql://root:root@localhost:3306/hospital_management")
+        engine.connect()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 import bcrypt

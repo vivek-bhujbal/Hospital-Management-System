@@ -1,4 +1,4 @@
-CREATE DATABASE hospital_management;
+CREATE DATABASE IF NOT EXISTS hospital_management;
 USE hospital_management;
 
 CREATE TABLE users (
@@ -34,12 +34,29 @@ CREATE TABLE doctors (
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
-CREATE TABLE receptionists (
+CREATE TABLE employees (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  user_id INT UNIQUE,
-  name VARCHAR(100) NOT NULL,
-  contact VARCHAR(20),
-  FOREIGN KEY (user_id) REFERENCES users(id)
+  user_id INT UNIQUE NOT NULL,
+  designation VARCHAR(100) NOT NULL,
+  joining_date DATE,
+  shift_start TIME,
+  shift_end TIME,
+  status ENUM('active','inactive') DEFAULT 'active',
+  added_by INT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id),
+  FOREIGN KEY (added_by) REFERENCES users(id)
+);
+
+CREATE TABLE employee_permissions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  employee_id INT NOT NULL,
+  can_register_patient TINYINT(1) DEFAULT 1,
+  can_schedule_appointment TINYINT(1) DEFAULT 1,
+  can_checkin_patient TINYINT(1) DEFAULT 1,
+  can_collect_billing TINYINT(1) DEFAULT 1,
+  can_view_reports TINYINT(1) DEFAULT 0,
+  FOREIGN KEY (employee_id) REFERENCES employees(id)
 );
 
 CREATE TABLE appointments (
@@ -80,7 +97,7 @@ CREATE TABLE billing (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (patient_id) REFERENCES patients(id),
   FOREIGN KEY (appointment_id) REFERENCES appointments(id),
-  FOREIGN KEY (collected_by) REFERENCES receptionists(id)
+  FOREIGN KEY (collected_by) REFERENCES employees(id)
 );
 
 CREATE TABLE hospital_settings (
