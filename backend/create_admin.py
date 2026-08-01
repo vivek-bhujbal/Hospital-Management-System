@@ -37,7 +37,9 @@ def create_admin():
             name="System Admin",
             email="admin@gmail.com",
             password_hash=get_password_hash("admin123"),
-            role="admin"
+            role="admin",
+            is_active=True,
+            is_email_verified=True
         )
         db.add(admin_user)
         db.commit()

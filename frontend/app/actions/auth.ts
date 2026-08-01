@@ -17,7 +17,16 @@ export async function loginAction(prevState: any, formData: FormData) {
     })
 
     if (!res.ok) {
-      return { error: 'Invalid email or password' }
+      let errorMsg = 'Invalid email or password'
+      try {
+        const errorData = await res.json()
+        if (errorData.detail) {
+          errorMsg = errorData.detail
+        }
+      } catch (e) {
+        // ignore JSON parse error
+      }
+      return { error: errorMsg }
     }
 
     const data = await res.json()
@@ -61,13 +70,24 @@ export async function registerAction(prevState: any, formData: FormData) {
   const name = formData.get('name')
   const email = formData.get('email')
   const password = formData.get('password')
-  const role = formData.get('role')
+  const contact = formData.get('contact') || ''
+  const gender = formData.get('gender') || null
+  const dob = formData.get('dob')
+  const blood_group = formData.get('blood_group') || null
+  
+  let age = null
+  if (dob) {
+    const birthDate = new Date(dob.toString())
+    const diff_ms = Date.now() - birthDate.getTime()
+    const age_dt = new Date(diff_ms) 
+    age = Math.abs(age_dt.getUTCFullYear() - 1970)
+  }
 
   try {
     const res = await fetch(`${API_URL}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, password, role })
+      body: JSON.stringify({ name, email, password, contact, gender, age, blood_group })
     })
 
     if (!res.ok) {

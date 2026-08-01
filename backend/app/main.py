@@ -1,11 +1,20 @@
 from fastapi import FastAPI
 from app.routers import auth, patients, doctors, receptionists, appointments, prescriptions, billing, admin, employees
 from app.database import engine, Base
+from fastapi.middleware.cors import CORSMiddleware
 import app.models.all_models
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Hospital Management System API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(patients.router, prefix="/patients", tags=["patients"])

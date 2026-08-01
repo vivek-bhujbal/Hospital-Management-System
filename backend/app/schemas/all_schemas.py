@@ -63,6 +63,15 @@ class PatientBase(BaseModel):
 class PatientCreate(PatientBase):
     user_id: Optional[int] = None
 
+class PatientRegister(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+    contact: str
+    gender: Optional[GenderEnum] = None
+    age: Optional[int] = None
+    blood_group: Optional[str] = None
+
 class PatientResponse(PatientBase):
     id: int
     user_id: Optional[int]

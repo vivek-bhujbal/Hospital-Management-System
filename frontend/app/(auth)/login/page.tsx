@@ -9,12 +9,37 @@ export default function LoginPage() {
   const router = useRouter()
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [resending, setResending] = useState(false)
+  const [resendMsg, setResendMsg] = useState('')
+  const [email, setEmail] = useState('')
+
+  const handleResend = async () => {
+    if (!email) return
+    setResending(true)
+    setResendMsg('')
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/auth/resend-verification`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      })
+      const data = await res.json()
+      setResendMsg(data.message || 'Verification email sent.')
+    } catch (e) {
+      setResendMsg('Failed to send verification email.')
+    }
+    setResending(false)
+  }
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setLoading(true)
     setError('')
+    setResendMsg('')
+    
     const formData = new FormData(e.currentTarget)
+    setEmail(formData.get('email') as string)
+    
     const result = await loginAction(null, formData)
     
     if (result?.error) {
@@ -51,9 +76,26 @@ export default function LoginPage() {
                 <svg className="h-5 w-5 text-red-400 mr-3" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                 </svg>
-                <p className="text-sm text-red-700 font-medium">{error}</p>
+                <div className="text-sm text-red-700 font-medium w-full">
+                  <p>{error}</p>
+                  {error.includes("verify your email") && (
+                    <button 
+                      onClick={handleResend}
+                      disabled={resending}
+                      className="mt-2 text-blue-600 hover:text-blue-800 underline text-xs font-semibold"
+                    >
+                      {resending ? 'Sending...' : 'Resend Verification Email'}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
+          )}
+          
+          {resendMsg && (
+             <div className="mb-6 bg-green-50 border-l-4 border-green-500 p-4 rounded-r-md">
+               <p className="text-sm text-green-700 font-medium">{resendMsg}</p>
+             </div>
           )}
 
           <form className="space-y-6" onSubmit={handleSubmit}>
@@ -65,7 +107,12 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-slate-700">Password</label>
+              <div className="flex justify-between">
+                <label htmlFor="password" className="block text-sm font-medium text-slate-700">Password</label>
+                <Link href="/forgot-password" className="text-sm font-medium text-blue-600 hover:text-blue-500">
+                  Forgot Password?
+                </Link>
+              </div>
               <div className="mt-2">
                 <input id="password" name="password" type="password" required className="appearance-none block w-full px-4 py-3 border border-slate-300 rounded-xl shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" placeholder="••••••••" />
               </div>

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Enum, Text, Time, Date, DECIMAL, ForeignKey, TIMESTAMP, func
+from sqlalchemy import Column, Integer, String, Enum, Text, Time, Date, DECIMAL, ForeignKey, TIMESTAMP, func, Boolean
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -9,6 +9,14 @@ class User(Base):
     email = Column(String(150), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
     role = Column(Enum('patient','doctor','receptionist','admin'), nullable=False)
+    is_active = Column(Boolean, default=True)
+    is_email_verified = Column(Boolean, default=False)
+    email_verified_at = Column(TIMESTAMP, nullable=True)
+    email_verification_token_hash = Column(String(255), nullable=True)
+    email_verification_expires_at = Column(TIMESTAMP, nullable=True)
+    password_reset_token_hash = Column(String(255), nullable=True)
+    password_reset_expires_at = Column(TIMESTAMP, nullable=True)
+    last_login_at = Column(TIMESTAMP, nullable=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
 
 class Patient(Base):
