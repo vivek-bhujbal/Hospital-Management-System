@@ -30,7 +30,12 @@ def get_overview(db: Session = Depends(get_db), current_user: User = Depends(all
 
 @router.get("/doctors", response_model=List[DoctorResponse])
 def admin_get_doctors(db: Session = Depends(get_db), current_user: User = Depends(allow_admin)):
-    return db.query(Doctor).all()
+    doctors = db.query(Doctor).all()
+    for doc in doctors:
+        user = db.query(User).filter(User.id == doc.user_id).first()
+        if user:
+            doc.email = user.email
+    return doctors
 
 @router.post("/doctors", response_model=DoctorResponse)
 def admin_create_doctor(doc_in: DoctorCreateWithAuth, db: Session = Depends(get_db), current_user: User = Depends(allow_admin)):
@@ -61,6 +66,7 @@ def admin_create_doctor(doc_in: DoctorCreateWithAuth, db: Session = Depends(get_
     db.add(new_doc)
     db.commit()
     db.refresh(new_doc)
+    new_doc.email = new_user.email
     return new_doc
 
 @router.patch("/doctors/{id}/reset-password")
@@ -87,8 +93,20 @@ def admin_update_doctor(id: int, doc_in: DoctorCreate, db: Session = Depends(get
     doc.timing_end = doc_in.timing_end
     doc.contact = doc_in.contact
     doc.status = doc_in.status
+    
+    user = db.query(User).filter(User.id == doc.user_id).first()
+    if user:
+        if doc_in.email and doc_in.email != user.email:
+            existing = db.query(User).filter(User.email == doc_in.email, User.id != user.id).first()
+            if existing:
+                raise HTTPException(status_code=409, detail="Email already registered")
+            user.email = doc_in.email
+        doc.email = user.email
+        
     db.commit()
     db.refresh(doc)
+    if user:
+        doc.email = user.email
     return doc
 
 @router.delete("/doctors/{id}")

@@ -1,5 +1,9 @@
 from fastapi import FastAPI
 from app.routers import auth, patients, doctors, receptionists, appointments, prescriptions, billing, admin, employees
+from app.database import engine, Base
+import app.models.all_models
+
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Hospital Management System API")
 

@@ -40,7 +40,7 @@ export default async function ReceptionistBilling() {
                 <tr key={b.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-8 py-5 whitespace-nowrap text-gray-800 font-medium">{new Date(b.created_at).toLocaleDateString()}</td>
                   <td className="px-8 py-5 whitespace-nowrap text-gray-600">#{b.patient_id}</td>
-                  <td className="px-8 py-5 whitespace-nowrap font-bold text-gray-800">${b.amount}</td>
+                  <td className="px-8 py-5 whitespace-nowrap font-bold text-gray-800">₹{b.amount}</td>
                   <td className="px-8 py-5 whitespace-nowrap">
                     <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full border ${b.status === 'paid' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
                       {b.status}

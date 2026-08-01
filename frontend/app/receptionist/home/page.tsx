@@ -4,10 +4,10 @@ import { Users, UserCheck } from 'lucide-react'
 
 export default async function ReceptionistHome() {
   const today = new Date().toISOString().split('T')[0]
-  const appts = await fetchAPI(`/appointments/?date=${today}`)
+  const allAppts = await fetchAPI(`/appointments/`).catch(() => [])
   
-  const total = appts.length || 0
-  const checkedIn = appts.filter((a: any) => a.status === 'checked_in').length || 0
+  const total = allAppts.length || 0
+  const checkedIn = allAppts.filter((a: any) => a.appt_date === today && a.status === 'checked_in').length || 0
   
   return (
     <div className="space-y-6">

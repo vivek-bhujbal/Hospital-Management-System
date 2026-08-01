@@ -50,6 +50,7 @@ export async function editDoctorAction(formData: FormData) {
   const id = formData.get('id')
   const payload = {
     name: formData.get('name'),
+    email: formData.get('email'),
     specialization: formData.get('specialization'),
     contact: formData.get('contact'),
     timing_start: formData.get('timing_start') || null,

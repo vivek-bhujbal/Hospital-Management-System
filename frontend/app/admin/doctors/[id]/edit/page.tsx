@@ -63,6 +63,11 @@ export default async function EditDoctorPage({ params }: { params: { id: string 
             </div>
 
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <input type="email" name="email" defaultValue={doctor.email} required className="w-full border p-2 rounded" />
+            </div>
+
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Specialization</label>
               <select name="specialization" defaultValue={doctor.specialization} required className="w-full border p-2 rounded bg-white text-gray-700">
                 <option value="">Select Specialization...</option>

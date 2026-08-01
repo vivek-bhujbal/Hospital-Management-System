@@ -80,6 +80,7 @@ class DoctorBase(BaseModel):
 
 class DoctorCreate(DoctorBase):
     user_id: Optional[int] = None
+    email: Optional[EmailStr] = None
 
 class DoctorCreateWithAuth(DoctorBase):
     email: EmailStr
@@ -91,6 +92,7 @@ class DoctorPasswordReset(BaseModel):
 class DoctorResponse(DoctorBase):
     id: int
     user_id: Optional[int]
+    email: Optional[EmailStr] = None
     class Config:
         from_attributes = True
 
