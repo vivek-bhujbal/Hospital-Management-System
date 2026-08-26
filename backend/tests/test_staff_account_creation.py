@@ -44,6 +44,10 @@ def test_only_super_admin_can_create_admin_and_creation_is_audited(
     assert event.actor_user_id == super_admin.id
     assert "password" not in event.new_values
 
+    listed = client.get("/super-admin/admins", headers=headers(login(super_admin)))
+    assert listed.status_code == 200
+    assert payload["email"] in [item["email"] for item in listed.json()]
+
 
 def test_admin_and_super_admin_can_create_operational_accounts(
     client, db, create_user, login

@@ -1,5 +1,6 @@
 import os
 
+from pydantic import EmailStr, TypeAdapter
 from sqlalchemy.orm import Session
 
 from app.core.security import get_password_hash
@@ -18,13 +19,14 @@ def create_admin(
 ) -> User:
     if role not in {UserRole.admin.value, UserRole.super_admin.value}:
         raise ValueError("Bootstrap role must be admin or super_admin")
-    existing_admin = db.query(User).filter(User.email == email).first()
+    normalized_email = str(TypeAdapter(EmailStr).validate_python(email)).lower()
+    existing_admin = db.query(User).filter(User.email == normalized_email).first()
     if existing_admin:
         raise ValueError("A user with that email already exists")
 
     admin_user = User(
         name=name,
-        email=email,
+        email=normalized_email,
         password_hash=get_password_hash(password),
         role=role,
         is_active=True,

@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react'
 
 import { createAdminAccountAction } from '@/app/actions/staff'
+import { setAdminActiveAction } from '@/app/actions/superAdmin'
 import SubmitButton from '@/components/SubmitButton'
 
 export interface AccountSummary {
@@ -32,6 +33,17 @@ export default function AdminAccountsPanel({ accounts }: { accounts: AccountSumm
     setSuccess('Administrator created successfully.')
   }
 
+  async function toggleStatus(formData: FormData) {
+    setError('')
+    setSuccess('')
+    const result = await setAdminActiveAction(formData)
+    if (result.error) {
+      setError(result.error)
+      return
+    }
+    setSuccess('Administrator status updated.')
+  }
+
   return (
     <div className="space-y-6">
       <section className="rounded-xl border bg-white p-6 shadow-sm">
@@ -57,17 +69,26 @@ export default function AdminAccountsPanel({ accounts }: { accounts: AccountSumm
       <section className="overflow-x-auto rounded-xl border bg-white shadow-sm">
         <table className="min-w-full divide-y text-sm">
           <thead className="bg-gray-50 text-left text-gray-600">
-            <tr><th className="p-4">Name</th><th className="p-4">Email</th><th className="p-4">Status</th><th className="p-4">Created</th></tr>
+            <tr><th className="p-4">Name</th><th className="p-4">Email</th><th className="p-4">Status</th><th className="p-4">Created</th><th className="p-4">Action</th></tr>
           </thead>
           <tbody className="divide-y">
             {accounts.length === 0 ? (
-              <tr><td colSpan={4} className="p-8 text-center text-gray-500">No administrators created yet.</td></tr>
+              <tr><td colSpan={5} className="p-8 text-center text-gray-500">No administrators created yet.</td></tr>
             ) : accounts.map((account) => (
               <tr key={account.id}>
                 <td className="p-4 font-medium text-gray-900">{account.name}</td>
                 <td className="p-4 text-gray-700">{account.email}</td>
                 <td className="p-4">{account.is_active ? 'Active' : 'Disabled'}</td>
                 <td className="p-4 text-gray-600">{new Date(account.created_at).toLocaleString()}</td>
+                <td className="p-4">
+                  <form action={toggleStatus}>
+                    <input type="hidden" name="id" value={account.id} />
+                    <input type="hidden" name="is_active" value={String(!account.is_active)} />
+                    <SubmitButton className="rounded-lg border px-3 py-2 hover:bg-gray-50">
+                      {account.is_active ? 'Deactivate' : 'Activate'}
+                    </SubmitButton>
+                  </form>
+                </td>
               </tr>
             ))}
           </tbody>

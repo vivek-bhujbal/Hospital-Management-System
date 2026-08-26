@@ -69,6 +69,7 @@ const MENU_ITEMS: Record<UserRole, readonly MenuItem[]> = {
     { name: 'Staff accounts', path: '/admin/staff', permission: PERMISSIONS.STAFF_CREATE },
     { name: 'Role grants', path: '/super-admin/permissions', permission: PERMISSIONS.STAFF_MANAGE_ROLES },
     { name: 'Settings', path: '/super-admin/settings', permission: PERMISSIONS.SETTINGS_MANAGE },
+    { name: 'Feature flags', path: '/super-admin/features', permission: PERMISSIONS.FEATURES_MANAGE },
     { name: 'Audit logs', path: '/super-admin/audit-logs', permission: PERMISSIONS.AUDIT_VIEW },
     { name: 'System health', path: '/super-admin/system-health' },
     { name: 'Admin portal', path: '/admin/home', permission: PERMISSIONS.REPORTS_VIEW },

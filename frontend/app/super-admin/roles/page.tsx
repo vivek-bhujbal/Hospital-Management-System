@@ -1,5 +1,5 @@
-import EnterpriseResourcePage from '@/components/EnterpriseResourcePage'
+import { redirect } from 'next/navigation'
 
 export default function SuperAdminRoles() {
-  return <EnterpriseResourcePage title="Role permission grants" endpoint="/super-admin/roles-permissions" />
+  redirect('/super-admin/permissions')
 }
