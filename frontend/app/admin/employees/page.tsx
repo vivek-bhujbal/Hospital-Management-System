@@ -5,7 +5,8 @@ import AddEmployeeModal from './AddEmployeeModal'
 
 async function getEmployees() {
   const token = cookies().get('token')?.value
-  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/admin/employees/`, {
+  const apiUrl = process.env.API_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+  const res = await fetch(`${apiUrl}/admin/employees/`, {
     headers: { 'Authorization': `Bearer ${token}` },
     cache: 'no-store'
   })

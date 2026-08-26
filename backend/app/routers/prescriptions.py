@@ -1,56 +1,73 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+
+from app.core.deps import require_permission
+from app.core.permissions import Permission
 from app.database import get_db
-from app.models.all_models import Prescription, Appointment, Patient, User, Doctor, Billing
-from app.schemas.all_schemas import PrescriptionResponse, PrescriptionCreate
-from typing import List
-from app.core.deps import get_current_user, RoleChecker
+from app.models.all_models import Appointment, Billing, Doctor, Patient, Prescription, User
+from app.schemas.all_schemas import PrescriptionCreate, PrescriptionResponse
+from app.services.audit_service import record_audit_event, request_audit_metadata
+
 
 router = APIRouter()
-allow_patient = RoleChecker(["patient"])
-allow_doctor = RoleChecker(["doctor"])
 
-@router.get("/me", response_model=List[PrescriptionResponse])
-def get_my_prescriptions(db: Session = Depends(get_db), current_user: User = Depends(allow_patient)):
+
+@router.get("/me", response_model=list[PrescriptionResponse])
+def get_my_prescriptions(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(Permission.prescriptions_view_self)),
+):
     patient = db.query(Patient).filter(Patient.user_id == current_user.id).first()
     if not patient:
         return []
-    
-    return db.query(Prescription).join(Appointment).filter(Appointment.patient_id == patient.id).order_by(Prescription.created_at.desc()).all()
+    return db.query(Prescription).join(Appointment).filter(
+        Appointment.patient_id == patient.id,
+    ).order_by(Prescription.created_at.desc()).all()
 
-@router.post("/", response_model=PrescriptionResponse)
-def create_prescription(pres_in: PrescriptionCreate, db: Session = Depends(get_db), current_user: User = Depends(allow_doctor)):
-    appt = db.query(Appointment).filter(Appointment.id == pres_in.appointment_id).first()
-    if not appt:
+
+@router.post("/", response_model=PrescriptionResponse, status_code=201)
+def create_prescription(
+    payload: PrescriptionCreate, request: Request, db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(Permission.prescriptions_create)),
+):
+    appointment = db.query(Appointment).filter(Appointment.id == payload.appointment_id).with_for_update().first()
+    if not appointment:
         raise HTTPException(status_code=404, detail="Appointment not found")
-        
     doctor = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
-    if not doctor or appt.doctor_id != doctor.id:
-        raise HTTPException(status_code=403, detail="Not authorized")
+    if not doctor or appointment.doctor_id != doctor.id:
+        raise HTTPException(status_code=403, detail="Appointment is not assigned to this doctor")
+    existing = db.query(Prescription).filter_by(appointment_id=appointment.id).first()
+    if existing:
+        return existing
+    if appointment.status not in ("checked_in", "in_progress"):
+        raise HTTPException(status_code=409, detail="Consultation can only complete a checked-in appointment")
+    if doctor.consultation_fee is None:
+        raise HTTPException(status_code=409, detail="Doctor consultation fee is not configured")
 
+    prescription = Prescription(**payload.model_dump())
+    bill = Billing(
+        patient_id=appointment.patient_id,
+        appointment_id=appointment.id,
+        amount=doctor.consultation_fee,
+        status="pending",
+    )
+    db.add_all([prescription, bill])
+    appointment.status = "completed"
+    db.flush()
+    record_audit_event(
+        db, actor=current_user, action="consultation.completed", resource_type="appointment",
+        resource_id=str(appointment.id),
+        new_values={"status": "completed", "prescription_id": prescription.id, "billing_id": bill.id},
+        **request_audit_metadata(request),
+    )
     try:
-        new_pres = Prescription(
-            appointment_id=appt.id,
-            diagnosis=pres_in.diagnosis,
-            medicine=pres_in.medicine,
-            dosage=pres_in.dosage,
-            notes=pres_in.notes
-        )
-        db.add(new_pres)
-        
-        appt.status = 'completed'
-        
-        new_bill = Billing(
-            patient_id=appt.patient_id,
-            appointment_id=appt.id,
-            amount=500.00,
-            status='pending'
-        )
-        db.add(new_bill)
-        
         db.commit()
-        db.refresh(new_pres)
-        return new_pres
-    except Exception as e:
+    except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=500, detail="Transaction failed")
+        existing = db.query(Prescription).filter_by(appointment_id=appointment.id).first()
+        if existing:
+            return existing
+        raise HTTPException(status_code=409, detail="Consultation was completed by another request")
+    db.refresh(prescription)
+    return prescription

@@ -1,24 +1,19 @@
-import pymysql
-import os
+"""Compatibility entry point for older setup instructions.
 
-schema_path = os.path.join('database', 'schema.sql')
+Schema creation is intentionally delegated to Alembic. The legacy SQL dump is
+not imported because it conflicts with the current ORM and migration history.
+"""
 
-with open(schema_path, 'r', encoding='utf-8') as f:
-    sql = f.read()
+import sys
+from pathlib import Path
 
-# Connect to the database with MULTI_STATEMENTS enabled
-connection = pymysql.connect(
-    host='127.0.0.1',
-    user='root',
-    password='root',
-    port=3306,
-    client_flag=pymysql.constants.CLIENT.MULTI_STATEMENTS
-)
 
-try:
-    with connection.cursor() as cursor:
-        cursor.execute(sql)
-    connection.commit()
-    print("Schema imported successfully on host!")
-finally:
-    connection.close()
+PROJECT_ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(PROJECT_ROOT / "backend"))
+
+from init_db import init_db  # noqa: E402
+
+
+if __name__ == "__main__":
+    print("Legacy SQL import is disabled; applying the Alembic migration chain.")
+    init_db()

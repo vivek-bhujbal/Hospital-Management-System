@@ -28,7 +28,7 @@ export default async function DoctorHome() {
       </div>
 
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-        <h2 className="text-xl font-semibold mb-4 text-gray-800">Today's Schedule</h2>
+        <h2 className="text-xl font-semibold mb-4 text-gray-800">Today&apos;s Schedule</h2>
         {appts.length === 0 ? (
           <p className="text-gray-500">No appointments scheduled for today.</p>
         ) : (

@@ -72,6 +72,8 @@ export default function AddDoctorForm() {
         </select>
         
         <input type="text" name="contact" placeholder="Contact" required className="border p-2 rounded" />
+
+        <input type="number" name="consultation_fee" min="0.01" step="0.01" placeholder="Consultation fee" required className="border p-2 rounded" />
         
         <input type="email" name="email" placeholder="Login Email" required value={email} onChange={e => setEmail(e.target.value)} className="border p-2 rounded" />
         

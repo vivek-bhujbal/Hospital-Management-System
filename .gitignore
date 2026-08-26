@@ -7,12 +7,14 @@
 node_modules/
 dist/
 .next/
+*.tsbuildinfo
 
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+*.db
 venv/
 env/
 .venv/

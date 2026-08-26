@@ -1,9 +1,10 @@
 import { fetchAPI } from '@/lib/api'
-import { requirePermission } from '@/lib/permissions'
+import { PERMISSIONS } from '@/lib/permissions'
+import { requirePermission } from '@/lib/serverPermissions'
 import ScheduleForm from './ScheduleForm'
 
 export default async function ReceptionistSchedule() {
-  requirePermission('can_schedule_appointment')
+  await requirePermission(PERMISSIONS.APPOINTMENTS_CREATE, '/receptionist/home')
   const patients = await fetchAPI('/patients/')
   const doctors = await fetchAPI('/doctors/')
 

@@ -3,9 +3,19 @@
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+const API_URL = process.env.API_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
-export async function loginAction(prevState: any, formData: FormData) {
+type AuthActionState = { error?: string; success?: boolean; redirectUrl?: string }
+
+interface LoginResponse {
+  access_token: string
+  role: string
+  permissions?: Record<string, boolean>
+  effective_permissions: string[]
+  expires_in: number
+}
+
+export async function loginAction(_prevState: AuthActionState | null, formData: FormData): Promise<AuthActionState> {
   const email = formData.get('email')
   const password = formData.get('password')
 
@@ -29,7 +39,7 @@ export async function loginAction(prevState: any, formData: FormData) {
       return { error: errorMsg }
     }
 
-    const data = await res.json()
+    const data = await res.json() as LoginResponse
     
     // Set HttpOnly cookie
     cookies().set('token', data.access_token, {
@@ -37,7 +47,7 @@ export async function loginAction(prevState: any, formData: FormData) {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
-      maxAge: 30 * 60 // 30 minutes
+      maxAge: data.expires_in
     })
     
     if (data.permissions) {
@@ -46,19 +56,47 @@ export async function loginAction(prevState: any, formData: FormData) {
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
         path: '/',
-        maxAge: 30 * 60
+        maxAge: data.expires_in
       })
     } else {
       cookies().delete('employee_permissions')
     }
 
+    cookies().set('user_permissions', JSON.stringify(data.effective_permissions || []), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: data.expires_in
+    })
+    cookies().set('user_role', data.role, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: data.expires_in
+    })
+
     // Prepare redirect URL
     const role = data.role
     let redirectUrl = '/'
-    if (role === 'patient') redirectUrl = '/patient/home'
-    else if (role === 'doctor') redirectUrl = '/doctor/home'
-    else if (role === 'receptionist') redirectUrl = '/receptionist/home'
-    else if (role === 'admin') redirectUrl = '/admin/home'
+
+    switch (role) {
+      case 'super_admin': redirectUrl = '/super-admin/home'; break;
+      case 'admin': redirectUrl = '/admin/home'; break;
+      case 'hospital_manager': redirectUrl = '/manager/home'; break;
+      case 'doctor': redirectUrl = '/doctor/home'; break;
+      case 'nurse': redirectUrl = '/nurse/home'; break;
+      case 'receptionist': redirectUrl = '/receptionist/home'; break;
+      case 'pharmacist': redirectUrl = '/pharmacy/home'; break;
+      case 'lab_technician': redirectUrl = '/lab/home'; break;
+      case 'radiologist': redirectUrl = '/radiology/home'; break;
+      case 'accountant': redirectUrl = '/accountant/home'; break;
+      case 'insurance_officer': redirectUrl = '/insurance/home'; break;
+      case 'ambulance_staff': redirectUrl = '/ambulance/home'; break;
+      case 'patient': redirectUrl = '/patient/home'; break;
+      default: redirectUrl = '/login'; break; // Fallback to login if unknown
+    }
     
     return { redirectUrl }
   } catch (error) {
@@ -66,7 +104,7 @@ export async function loginAction(prevState: any, formData: FormData) {
   }
 }
 
-export async function registerAction(prevState: any, formData: FormData) {
+export async function registerAction(_prevState: AuthActionState | null, formData: FormData): Promise<AuthActionState> {
   const name = formData.get('name')
   const email = formData.get('email')
   const password = formData.get('password')
@@ -103,5 +141,8 @@ export async function registerAction(prevState: any, formData: FormData) {
 
 export async function logoutAction() {
   cookies().delete('token')
+  cookies().delete('employee_permissions')
+  cookies().delete('user_permissions')
+  cookies().delete('user_role')
   redirect('/login')
 }

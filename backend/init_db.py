@@ -1,23 +1,49 @@
+import re
+from pathlib import Path
+
 import pymysql
-from app.database import Base, engine
-# Import all models so they register with Base.metadata
-from app.models.all_models import *
+from alembic import command
+from alembic.config import Config
+from sqlalchemy.engine import make_url
 
-def init_db():
+from app.core.config import settings
+
+
+def _database_name() -> str:
+    name = make_url(settings.DATABASE_URL).database
+    if not name or not re.fullmatch(r"[A-Za-z0-9_]+", name):
+        raise ValueError("DATABASE_URL must contain a safe MySQL database name")
+    return name
+
+
+def _ensure_database_exists() -> None:
+    url = make_url(settings.DATABASE_URL)
+    connection = pymysql.connect(
+        host=url.host or "localhost",
+        user=url.username,
+        password=url.password,
+        port=url.port or 3306,
+    )
     try:
-        # 1. Connect to MySQL server to create the DB if it doesn't exist
-        connection = pymysql.connect(host='localhost', user='root', password='root', port=3306)
         with connection.cursor() as cursor:
-            cursor.execute("CREATE DATABASE IF NOT EXISTS hospital_management;")
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{_database_name()}`")
         connection.commit()
+    finally:
         connection.close()
-        print("Database 'hospital_management' verified/created.")
 
-        # 2. Create tables using SQLAlchemy metadata
-        Base.metadata.create_all(bind=engine)
-        print("SQLAlchemy migration completed: All tables created successfully!")
-    except Exception as e:
-        print(f"Error during migration: {e}")
+
+def _alembic_config() -> Config:
+    backend_root = Path(__file__).resolve().parent
+    config = Config(str(backend_root / "alembic.ini"))
+    config.set_main_option("script_location", str(backend_root / "alembic"))
+    return config
+
+
+def init_db() -> None:
+    _ensure_database_exists()
+    command.upgrade(_alembic_config(), "head")
+    print("Database migration completed successfully; no seed data was added.")
+
 
 if __name__ == "__main__":
     init_db()

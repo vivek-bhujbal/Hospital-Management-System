@@ -3,10 +3,11 @@ import SubmitButton from '@/components/SubmitButton'
 import AutoRefresh from '@/components/AutoRefresh'
 import { fetchAPI } from '@/lib/api'
 import { checkinAction } from '@/app/actions/receptionist'
-import { requirePermission } from '@/lib/permissions'
+import { PERMISSIONS } from '@/lib/permissions'
+import { requirePermission } from '@/lib/serverPermissions'
 
 export default async function CheckInQueue() {
-  requirePermission('can_checkin_patient')
+  await requirePermission(PERMISSIONS.APPOINTMENTS_CHECKIN, '/receptionist/home')
   const today = new Date().toISOString().split('T')[0]
   const appts = await fetchAPI(`/appointments/?date=${today}`)
   

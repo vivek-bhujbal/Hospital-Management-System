@@ -2,13 +2,16 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
+RUN groupadd --system hospital && useradd --system --gid hospital --home-dir /app hospital
+
 # Install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install pymysql cryptography passlib bcrypt==3.2.2 python-jose  # Ensure all auth and db libs are present
 
 # Copy application code
-COPY . .
+COPY --chown=hospital:hospital . .
+
+USER hospital
 
 # Expose port
 EXPOSE 8000

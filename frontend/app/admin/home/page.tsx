@@ -20,7 +20,7 @@ export default async function AdminHome() {
           <p className="text-4xl font-bold text-indigo-700 mt-2">{overview.total_doctors}</p>
         </div>
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-          <h2 className="text-sm font-semibold text-gray-500 uppercase">Today's Appointments</h2>
+          <h2 className="text-sm font-semibold text-gray-500 uppercase">Today&apos;s Appointments</h2>
           <p className="text-4xl font-bold text-green-700 mt-2">{overview.today_appointments}</p>
         </div>
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">

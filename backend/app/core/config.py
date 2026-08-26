@@ -1,8 +1,11 @@
+from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = "mysql+pymysql://root:password@localhost/hospital_management"
-    SECRET_KEY: str = "supersecretkey"
+    model_config = ConfigDict(env_file=".env", extra="allow")
+
+    DATABASE_URL: str
+    SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
 
@@ -13,9 +16,12 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM_EMAIL: str = ""
     SMTP_FROM_NAME: str = "Hospital Management System"
+    CORS_ORIGINS: str = "http://localhost:3000"
+    CELERY_BROKER_URL: str = "redis://localhost:6379/0"
+    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"
 
-    class Config:
-        env_file = ".env"
-        extra = "allow"
+    @property
+    def cors_origins(self) -> list[str]:
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
 
 settings = Settings()

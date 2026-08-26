@@ -83,6 +83,11 @@ export default async function EditDoctorPage({ params }: { params: { id: string 
             </div>
 
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Consultation Fee</label>
+              <input type="number" name="consultation_fee" min="0.01" step="0.01" defaultValue={doctor.consultation_fee ?? ''} required className="w-full border p-2 rounded" />
+            </div>
+
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
               <select name="status" defaultValue={doctor.status} required className="w-full border p-2 rounded bg-white text-gray-700">
                 <option value="active">Active</option>

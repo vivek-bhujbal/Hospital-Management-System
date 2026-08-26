@@ -5,16 +5,22 @@ from app.database import get_db
 from app.models.all_models import Doctor, Patient, Appointment, Billing, User, HospitalSetting
 from app.schemas.all_schemas import DoctorResponse, DoctorCreate, PatientResponse, AppointmentResponse, HospitalSettingResponse, DoctorCreateWithAuth, DoctorPasswordReset
 from typing import List
-from passlib.context import CryptContext
 from datetime import date
-from app.core.deps import get_current_user, RoleChecker
+from app.core.deps import require_permission
+from app.core.permissions import Permission
+from app.core.security import get_password_hash
 
 router = APIRouter()
-allow_admin = RoleChecker(["admin"])
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+allow_reports = require_permission(Permission.reports_view)
+allow_doctors_view = require_permission(Permission.doctors_view)
+allow_doctors_manage = require_permission(Permission.doctors_manage)
+allow_patients_view = require_permission(Permission.patients_view)
+allow_appointments_view = require_permission(Permission.appointments_view)
+allow_billing_report = require_permission(Permission.billing_report)
+allow_settings_view = require_permission(Permission.settings_view)
 
 @router.get("/overview")
-def get_overview(db: Session = Depends(get_db), current_user: User = Depends(allow_admin)):
+def get_overview(db: Session = Depends(get_db), current_user: User = Depends(allow_reports)):
     today = date.today()
     total_patients = db.query(Patient).count()
     total_doctors = db.query(Doctor).count()
@@ -29,7 +35,7 @@ def get_overview(db: Session = Depends(get_db), current_user: User = Depends(all
     }
 
 @router.get("/doctors", response_model=List[DoctorResponse])
-def admin_get_doctors(db: Session = Depends(get_db), current_user: User = Depends(allow_admin)):
+def admin_get_doctors(db: Session = Depends(get_db), current_user: User = Depends(allow_doctors_view)):
     doctors = db.query(Doctor).all()
     for doc in doctors:
         user = db.query(User).filter(User.id == doc.user_id).first()
@@ -38,7 +44,7 @@ def admin_get_doctors(db: Session = Depends(get_db), current_user: User = Depend
     return doctors
 
 @router.post("/doctors", response_model=DoctorResponse)
-def admin_create_doctor(doc_in: DoctorCreateWithAuth, db: Session = Depends(get_db), current_user: User = Depends(allow_admin)):
+def admin_create_doctor(doc_in: DoctorCreateWithAuth, db: Session = Depends(get_db), current_user: User = Depends(allow_doctors_manage)):
     # Check if email exists
     if db.query(User).filter(User.email == doc_in.email).first():
         raise HTTPException(status_code=409, detail="Email already registered")
@@ -47,8 +53,10 @@ def admin_create_doctor(doc_in: DoctorCreateWithAuth, db: Session = Depends(get_
     new_user = User(
         name=doc_in.name,
         email=doc_in.email,
-        password_hash=pwd_context.hash(doc_in.password),
-        role='doctor'
+        password_hash=get_password_hash(doc_in.password),
+        role='doctor',
+        is_active=True,
+        is_email_verified=True,
     )
     db.add(new_user)
     db.flush() # get user ID
@@ -70,7 +78,7 @@ def admin_create_doctor(doc_in: DoctorCreateWithAuth, db: Session = Depends(get_
     return new_doc
 
 @router.patch("/doctors/{id}/reset-password")
-def admin_reset_doctor_password(id: int, reset_in: DoctorPasswordReset, db: Session = Depends(get_db), current_user: User = Depends(allow_admin)):
+def admin_reset_doctor_password(id: int, reset_in: DoctorPasswordReset, db: Session = Depends(get_db), current_user: User = Depends(allow_doctors_manage)):
     doc = db.query(Doctor).filter(Doctor.id == id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Doctor not found")
@@ -79,12 +87,12 @@ def admin_reset_doctor_password(id: int, reset_in: DoctorPasswordReset, db: Sess
     if not user:
         raise HTTPException(status_code=404, detail="Linked user account not found")
         
-    user.password_hash = pwd_context.hash(reset_in.new_password)
+    user.password_hash = get_password_hash(reset_in.new_password)
     db.commit()
     return {"status": "success", "message": "Password reset successfully"}
 
 @router.put("/doctors/{id}", response_model=DoctorResponse)
-def admin_update_doctor(id: int, doc_in: DoctorCreate, db: Session = Depends(get_db), current_user: User = Depends(allow_admin)):
+def admin_update_doctor(id: int, doc_in: DoctorCreate, db: Session = Depends(get_db), current_user: User = Depends(allow_doctors_manage)):
     doc = db.query(Doctor).filter(Doctor.id == id).first()
     if not doc: raise HTTPException(status_code=404)
     doc.name = doc_in.name
@@ -110,7 +118,7 @@ def admin_update_doctor(id: int, doc_in: DoctorCreate, db: Session = Depends(get
     return doc
 
 @router.delete("/doctors/{id}")
-def admin_delete_doctor(id: int, db: Session = Depends(get_db), current_user: User = Depends(allow_admin)):
+def admin_delete_doctor(id: int, db: Session = Depends(get_db), current_user: User = Depends(allow_doctors_manage)):
     doc = db.query(Doctor).filter(Doctor.id == id).first()
     if not doc: raise HTTPException(status_code=404)
     db.delete(doc)
@@ -118,15 +126,15 @@ def admin_delete_doctor(id: int, db: Session = Depends(get_db), current_user: Us
     return {"status": "deleted"}
 
 @router.get("/patients", response_model=List[PatientResponse])
-def admin_get_patients(db: Session = Depends(get_db), current_user: User = Depends(allow_admin)):
+def admin_get_patients(db: Session = Depends(get_db), current_user: User = Depends(allow_patients_view)):
     return db.query(Patient).all()
 
 @router.get("/appointments", response_model=List[AppointmentResponse])
-def admin_get_appointments(db: Session = Depends(get_db), current_user: User = Depends(allow_admin)):
+def admin_get_appointments(db: Session = Depends(get_db), current_user: User = Depends(allow_appointments_view)):
     return db.query(Appointment).order_by(Appointment.appt_date.desc(), Appointment.appt_time.desc()).all()
 
 @router.get("/billing/report")
-def get_billing_report(db: Session = Depends(get_db), current_user: User = Depends(allow_admin)):
+def get_billing_report(db: Session = Depends(get_db), current_user: User = Depends(allow_billing_report)):
     paid_total = db.query(func.sum(Billing.amount)).filter(Billing.status == 'paid').scalar() or 0
     pending_total = db.query(func.sum(Billing.amount)).filter(Billing.status == 'pending').scalar() or 0
     recent = db.query(Billing).order_by(Billing.created_at.desc()).limit(50).all()
@@ -138,7 +146,7 @@ def get_billing_report(db: Session = Depends(get_db), current_user: User = Depen
     }
 
 @router.get("/settings", response_model=HospitalSettingResponse)
-def get_settings(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+def get_settings(db: Session = Depends(get_db), current_user = Depends(allow_settings_view)):
     setting = db.query(HospitalSetting).first()
     if not setting:
         setting = HospitalSetting(hospital_name="Demo Hospital", address="123 Health St", phone="555-0100", gstin="GSTIN123456")

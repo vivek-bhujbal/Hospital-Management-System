@@ -3,10 +3,11 @@ import SubmitButton from '@/components/SubmitButton'
 import AutoRefresh from '@/components/AutoRefresh'
 import { fetchAPI } from '@/lib/api'
 import { collectPaymentAction } from '@/app/actions/receptionist'
-import { requirePermission } from '@/lib/permissions'
+import { PERMISSIONS } from '@/lib/permissions'
+import { requirePermission } from '@/lib/serverPermissions'
 
 export default async function ReceptionistBilling() {
-  requirePermission('can_collect_billing')
+  await requirePermission(PERMISSIONS.BILLING_COLLECT, '/receptionist/home')
   const bills = await fetchAPI('/billing/')
   const settings = await fetchAPI('/admin/settings')
 

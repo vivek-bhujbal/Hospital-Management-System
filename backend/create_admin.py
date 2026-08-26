@@ -1,52 +1,64 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from passlib.context import CryptContext
-from app.models.all_models import User
 import os
 
-db_url = os.environ.get("DATABASE_URL")
-if db_url:
-    engine = create_engine(db_url)
-    engine.connect()
-else:
-    # Try 3307 first (Docker), fallback to 3306 (local)
-    try:
-        engine = create_engine("mysql+pymysql://root:root@localhost:3307/hospital_management")
-        engine.connect()
-    except:
-        engine = create_engine("mysql+pymysql://root:root@localhost:3306/hospital_management")
-        engine.connect()
+from sqlalchemy.orm import Session
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-import bcrypt
+from app.core.security import get_password_hash
+from app.core.roles import UserRole
+from app.database import SessionLocal
+from app.models.all_models import User
 
-def get_password_hash(password: str) -> str:
-    salt = bcrypt.gensalt()
-    return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
 
-def create_admin():
+def create_admin(
+    db: Session,
+    *,
+    email: str,
+    password: str,
+    name: str,
+    role: str = UserRole.admin.value,
+) -> User:
+    if role not in {UserRole.admin.value, UserRole.super_admin.value}:
+        raise ValueError("Bootstrap role must be admin or super_admin")
+    existing_admin = db.query(User).filter(User.email == email).first()
+    if existing_admin:
+        raise ValueError("A user with that email already exists")
+
+    admin_user = User(
+        name=name,
+        email=email,
+        password_hash=get_password_hash(password),
+        role=role,
+        is_active=True,
+        is_email_verified=True,
+    )
+    db.add(admin_user)
+    db.commit()
+    db.refresh(admin_user)
+    return admin_user
+
+
+def main() -> None:
+    email = os.getenv("ADMIN_EMAIL")
+    password = os.getenv("ADMIN_PASSWORD")
+    name = os.getenv("ADMIN_NAME", "System Administrator")
+    role = os.getenv("ADMIN_ROLE", UserRole.admin.value)
+    if not email or not password:
+        raise RuntimeError(
+            "ADMIN_EMAIL and ADMIN_PASSWORD must be provided explicitly"
+        )
+
     db = SessionLocal()
     try:
-        # Check if exists
-        existing_admin = db.query(User).filter(User.email == 'admin@gmail.com').first()
-        if existing_admin:
-            print("Admin already exists.")
-            return
-
-        admin_user = User(
-            name="System Admin",
-            email="admin@gmail.com",
-            password_hash=get_password_hash("admin123"),
-            role="admin",
-            is_active=True,
-            is_email_verified=True
+        admin = create_admin(
+            db,
+            email=email,
+            password=password,
+            name=name,
+            role=role,
         )
-        db.add(admin_user)
-        db.commit()
-        db.refresh(admin_user)
-        print("Admin user created successfully with ID:", admin_user.id)
+        print(f"{role} user created successfully with ID: {admin.id}")
     finally:
         db.close()
 
+
 if __name__ == "__main__":
-    create_admin()
+    main()

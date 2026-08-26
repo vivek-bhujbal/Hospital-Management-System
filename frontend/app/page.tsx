@@ -20,7 +20,7 @@ export default function Home() {
         </h1>
         
         <p className="text-lg md:text-xl text-slate-600 max-w-2xl leading-relaxed">
-          A unified, state-of-the-art platform connecting patients, doctors, and administration. Log in once, and we'll take you exactly where you need to be.
+          A unified, state-of-the-art platform connecting patients, doctors, and administration. Log in once, and we&apos;ll take you exactly where you need to be.
         </p>
 
         <div className="pt-8 w-full max-w-md flex flex-col gap-4">

@@ -1,26 +1,94 @@
 services:
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-hospital_management}
+      MYSQL_USER: ${MYSQL_USER:-hospital_app}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    build:
+      context: ./backend
+    restart: "no"
+    env_file: .env
+    environment:
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-hospital_app}:${MYSQL_PASSWORD}@db/${MYSQL_DATABASE:-hospital_management}
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      db:
+        condition: service_healthy
+
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
-    container_name: hospital_backend
-    restart: always
+    restart: unless-stopped
+    env_file: .env
     environment:
-      - DATABASE_URL=mysql+pymysql://root:root@host.docker.internal:3306/hospital_management
-      - JWT_SECRET=your_super_secret_key
-      - JWT_ALGORITHM=HS256
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-hospital_app}:${MYSQL_PASSWORD}@db/${MYSQL_DATABASE:-hospital_management}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    command: ["celery", "-A", "app.celery_app.celery_app", "worker", "--loglevel=info", "--concurrency=4"]
+    env_file: .env
+    environment:
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-hospital_app}:${MYSQL_PASSWORD}@db/${MYSQL_DATABASE:-hospital_management}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
 
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
-    container_name: hospital_frontend
-    restart: always
-    depends_on:
-      - backend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    restart: unless-stopped
     environment:
-      - NEXT_PUBLIC_API_URL=http://backend:8000
+      API_INTERNAL_URL: http://backend:8000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     ports:
       - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  db_data:

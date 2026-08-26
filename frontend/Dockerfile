@@ -1,10 +1,12 @@
 FROM node:18-alpine AS builder
 
 WORKDIR /app
+ARG NEXT_PUBLIC_API_URL=http://localhost:8000
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 # Install dependencies first for caching
-COPY package.json ./
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm ci
 
 # Copy source code and build
 COPY . .

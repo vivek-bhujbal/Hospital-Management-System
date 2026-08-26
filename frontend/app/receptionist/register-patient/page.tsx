@@ -1,15 +1,16 @@
 import ClientForm from '@/components/ClientForm'
 import SubmitButton from '@/components/SubmitButton'
 import { registerPatientAction } from '@/app/actions/receptionist'
-import { requirePermission } from '@/lib/permissions'
+import { PERMISSIONS } from '@/lib/permissions'
+import { requirePermission } from '@/lib/serverPermissions'
 
-export default function RegisterPatient() {
-  requirePermission('can_register_patient')
+export default async function RegisterPatient() {
+  await requirePermission(PERMISSIONS.PATIENTS_CREATE, '/receptionist/home')
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-gray-800 tracking-tight">Register New Patient</h1>
-        <p className="text-gray-600 mt-1">Enter the patient's details below to create a new profile in the system.</p>
+        <p className="text-gray-600 mt-1">Enter the patient&apos;s details below to create a new profile in the system.</p>
       </div>
       
       <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 max-w-3xl">
