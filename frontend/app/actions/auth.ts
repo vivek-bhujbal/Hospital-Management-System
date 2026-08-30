@@ -2,6 +2,7 @@
 
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { roleHome } from '@/lib/roleRoutes'
 
 const API_URL = process.env.API_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -77,28 +78,7 @@ export async function loginAction(_prevState: AuthActionState | null, formData: 
       maxAge: data.expires_in
     })
 
-    // Prepare redirect URL
-    const role = data.role
-    let redirectUrl = '/'
-
-    switch (role) {
-      case 'super_admin': redirectUrl = '/super-admin/home'; break;
-      case 'admin': redirectUrl = '/admin/home'; break;
-      case 'hospital_manager': redirectUrl = '/manager/home'; break;
-      case 'doctor': redirectUrl = '/doctor/home'; break;
-      case 'nurse': redirectUrl = '/nurse/home'; break;
-      case 'receptionist': redirectUrl = '/receptionist/home'; break;
-      case 'pharmacist': redirectUrl = '/pharmacy/home'; break;
-      case 'lab_technician': redirectUrl = '/lab/home'; break;
-      case 'radiologist': redirectUrl = '/radiology/home'; break;
-      case 'accountant': redirectUrl = '/accountant/home'; break;
-      case 'insurance_officer': redirectUrl = '/insurance/home'; break;
-      case 'ambulance_staff': redirectUrl = '/ambulance/home'; break;
-      case 'patient': redirectUrl = '/patient/home'; break;
-      default: redirectUrl = '/login'; break; // Fallback to login if unknown
-    }
-    
-    return { redirectUrl }
+    return { redirectUrl: roleHome(data.role) }
   } catch (error) {
     return { error: 'Failed to connect to the server' }
   }

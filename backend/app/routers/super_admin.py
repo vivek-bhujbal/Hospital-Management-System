@@ -2,8 +2,8 @@ from datetime import datetime, timezone
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from pydantic import BaseModel, EmailStr, field_validator
-from sqlalchemy import text
+from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.core.deps import require_permission, require_role
@@ -13,6 +13,7 @@ from app.core.security import get_password_hash, validate_password_strength
 from app.database import get_db
 from app.models.all_models import AuditLog, FeatureFlag, Organization, RolePermission, SystemSetting, User
 from app.schemas.all_schemas import (
+    AdminPasswordReset,
     AuditLogResponse, FeatureFlagCreate, FeatureFlagResponse, FeatureFlagUpdate,
     OrganizationCreate, OrganizationResponse, OrganizationUpdate,
     RolePermissionCreate, RolePermissionResponse,
@@ -40,11 +41,67 @@ ADMINISTRATIVE_ROLES = {
 
 
 class AdminCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str
     email: EmailStr
     password: str
 
     _validate_password = field_validator("password")(validate_password_strength)
+
+
+def _system_health(db: Session):
+    database_status = "unavailable"
+    try:
+        db.execute(text("SELECT 1"))
+        database_status = "available"
+    except Exception:
+        db.rollback()
+
+    redis_status = "unavailable"
+    try:
+        from redis import Redis
+        from app.core.config import settings
+
+        client = Redis.from_url(
+            settings.CELERY_BROKER_URL,
+            socket_connect_timeout=0.5,
+            socket_timeout=0.5,
+        )
+        redis_status = "available" if client.ping() else "unavailable"
+    except Exception:
+        redis_status = "unavailable"
+
+    return {
+        "backend": "available",
+        "database": database_status,
+        "redis": redis_status,
+        "checked_at": datetime.now(timezone.utc),
+    }
+
+
+@router.get("/overview")
+def get_platform_overview(db: Session = Depends(get_db)):
+    recent_activity = (
+        db.query(AuditLog)
+        .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+        .limit(8)
+        .all()
+    )
+    return {
+        "total_organizations": db.query(func.count(Organization.id)).scalar() or 0,
+        "total_admins": db.query(func.count(User.id)).filter(User.role == UserRole.admin.value).scalar() or 0,
+        "active_admins": db.query(func.count(User.id)).filter(
+            User.role == UserRole.admin.value,
+            User.is_active.is_(True),
+        ).scalar() or 0,
+        "total_users": db.query(func.count(User.id)).scalar() or 0,
+        "role_permission_grants": db.query(func.count(RolePermission.id)).scalar() or 0,
+        "system_settings": db.query(func.count(SystemSetting.id)).scalar() or 0,
+        "feature_flags": db.query(func.count(FeatureFlag.id)).scalar() or 0,
+        "recent_activity": recent_activity,
+        "health": _system_health(db),
+    }
 
 
 @router.get("/settings", response_model=List[SystemSettingResponse])
@@ -289,6 +346,56 @@ def get_admins(db: Session = Depends(get_db)):
     ]
 
 
+@router.get("/admins/{admin_id}", response_model=StaffAccountResponse)
+def get_admin(admin_id: int, db: Session = Depends(get_db)):
+    item = db.query(User).filter(
+        User.id == admin_id,
+        User.role == UserRole.admin.value,
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Admin not found")
+    return {
+        "id": item.id,
+        "name": item.name,
+        "email": item.email,
+        "role": item.role,
+        "is_active": item.is_active,
+        "profile_id": None,
+        "created_at": item.created_at,
+    }
+
+
+@router.patch("/admins/{admin_id}/reset-password")
+def reset_admin_password(
+    admin_id: int,
+    reset_in: AdminPasswordReset,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(Permission.staff_manage_roles)),
+):
+    item = db.query(User).filter(
+        User.id == admin_id,
+        User.role == UserRole.admin.value,
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Admin not found")
+
+    item.password_hash = get_password_hash(reset_in.new_password)
+    item.password_reset_token_hash = None
+    item.password_reset_expires_at = None
+    record_audit_event(
+        db,
+        actor=current_user,
+        action="admin.password_reset",
+        resource_type="user",
+        resource_id=str(item.id),
+        new_values={"target_user_id": item.id},
+        **request_audit_metadata(request),
+    )
+    db.commit()
+    return {"status": "success", "message": "Administrator password reset successfully"}
+
+
 def _set_admin_active(admin_id: int, active: bool, request: Request, db: Session, current_user: User):
     item = db.query(User).filter(User.id == admin_id, User.role == UserRole.admin.value).first()
     if not item:
@@ -324,26 +431,4 @@ def activate_admin(
 
 @router.get("/system-health")
 def get_system_health(db: Session = Depends(get_db)):
-    database_status = "unavailable"
-    try:
-        db.execute(text("SELECT 1"))
-        database_status = "available"
-    except Exception:
-        db.rollback()
-
-    redis_status = "unavailable"
-    try:
-        from redis import Redis
-        from app.core.config import settings
-        client = Redis.from_url(
-            settings.CELERY_BROKER_URL, socket_connect_timeout=0.5, socket_timeout=0.5,
-        )
-        redis_status = "available" if client.ping() else "unavailable"
-    except Exception:
-        redis_status = "unavailable"
-
-    return {
-        "database": database_status,
-        "redis": redis_status,
-        "checked_at": datetime.now(timezone.utc),
-    }
+    return _system_health(db)

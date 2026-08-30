@@ -3,8 +3,8 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_current_user, require_permission
-from app.core.permissions import Permission
+from app.core.deps import get_current_user, require_role
+from app.core.roles import UserRole
 from app.database import get_db
 from app.models.all_models import AuditLog, User
 from app.schemas.all_schemas import (
@@ -37,7 +37,7 @@ def update_user_role(
     role_update: UserRoleUpdate,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(Permission.staff_manage_roles)),
+    current_user: User = Depends(require_role(UserRole.super_admin)),
 ):
     target = db.query(User).filter(User.id == user_id).first()
     if not target:
@@ -75,7 +75,7 @@ def list_audit_logs(
     limit: int = Query(default=100, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(Permission.audit_view)),
+    current_user: User = Depends(require_role(UserRole.super_admin)),
 ):
     return (
         db.query(AuditLog)

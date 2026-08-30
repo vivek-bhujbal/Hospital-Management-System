@@ -1,6 +1,6 @@
 # Hospital Management System — Project Context
 
-> Last reviewed after the enterprise phases 2-12 reconciliation on 2026-08-26.
+> Last reconciled with the authorization-separation working tree based on branch `main` at commit `a76521a` on 2026-08-30.
 >
 > This document describes the application as it currently exists in code. When this file conflicts with the README or older walkthrough notes, treat the implementation files named here as the source of truth.
 
@@ -15,9 +15,20 @@ The application supports thirteen user roles. The original roles remain backward
 - `receptionist`: registers walk-in patients, schedules and checks in appointments, and collects payments, subject to per-employee permissions.
 - `admin`: views hospital-wide metrics and manages doctors, receptionist employees, permissions, patients, appointments, and billing reports.
 
-Enterprise roles are `super_admin`, `hospital_manager`, `nurse`, `pharmacist`, `lab_technician`, `radiologist`, `accountant`, `insurance_officer`, and `ambulance_staff`. Their backend modules cover organizations/settings/audit, departmental reporting, assignment-scoped nursing, pharmacy stock and dispensing, laboratory orders/results, radiology studies/reports, accounting, insurance claims, and ambulance dispatch. The frontend exposes authenticated live-data portals for each role; create/update workflows remain API-first in several enterprise screens.
+Enterprise roles are `super_admin`, `hospital_manager`, `nurse`, `pharmacist`, `lab_technician`, `radiologist`, `accountant`, `insurance_officer`, and `ambulance_staff`. Their backend modules cover organizations/settings/audit, departmental reporting, assignment-scoped nursing, pharmacy stock and dispensing, laboratory orders/results, radiology studies/reports, accounting, insurance claims, and ambulance dispatch. The frontend exposes authenticated live-data portals for each role. Super Admin now has interactive management workflows; create/update workflows remain API-first in several other enterprise screens.
 
 The active application is the nested repository at `Hospital-Management-System/`. Python files named `generate_*.py`, `setup_*.py`, and frontend refactoring scripts are development/scaffolding utilities; they are not part of the runtime request path.
+
+### 1.1 Latest implemented changes
+
+- `super_admin` is now a standalone platform role and no longer inherits Admin or Hospital Manager access. Exact backend role guards separate `/super-admin/*` from `/admin/*` and `/admin/employees/*`.
+- Super Admin and Admin layouts and sidebars are separated. Middleware provides an early role-cookie redirect, while live layout checks and FastAPI dependencies remain authoritative.
+- Login homes are centralized for all thirteen roles. An authenticated Admin visiting `/super-admin/*` is redirected to `/admin/home`; Super Admin is redirected away from `/admin/*`.
+- The Super Admin dashboard now includes organization/Admin/user/grant/setting/feature counts, recent audit activity, and backend/database/Redis health. Admin details, a role reference, paginated audit table, organization editing, and feature-description editing are implemented.
+- The Admin dashboard now includes collected revenue and recent appointment/billing activity. Patient and appointment filters and receptionist employee profile/status editing are implemented.
+- Admin doctor create/update/password-reset/delete operations now write sanitized audit events. Existing employee creation/update/deactivation/permission audit events remain intact.
+- A Super Admin can reset an Admin account password from `/super-admin/admins/[id]`. The backend enforces the shared password-strength policy, restricts targets to the `admin` role, clears outstanding password-reset tokens, hashes the replacement password, and writes a secret-free audit event.
+- Organization isolation is intentionally deferred; `docs/organization-scoping-plan.md` defines an additive expand/backfill/validate/enforce rollout that preserves existing data.
 
 ## 2. Technology stack
 
@@ -162,9 +173,9 @@ JWT lifetime uses `ACCESS_TOKEN_EXPIRE_MINUTES`, and all frontend session cookie
 Two dependency types enforce access:
 
 - `RoleChecker`: allows a fixed list of roles.
-- `PermissionChecker`: always allows admins; for receptionists, it requires a linked active `employees` row and a truthy named permission.
+- `PermissionChecker`: evaluates the role's static and dynamic grants; for receptionists, it also applies the linked active employee's legacy permission overrides.
 
-The public dependency factories are `require_role(...)`, `require_any_role(...)`, and `require_permission(...)`. Administrative inheritance is limited to `super_admin → admin → hospital_manager`. Operational roles do not inherit administrative permissions.
+The public dependency factories are `require_role(...)`, `require_any_role(...)`, and `require_permission(...)`. Admin retains the legacy Hospital Manager capability baseline, but Super Admin is standalone and has only platform mutation permissions. This prevents Super Admin from entering hospital-operational APIs and prevents Admin from entering platform APIs. Operational roles do not inherit administrative permissions.
 
 Receptionist permissions are:
 
@@ -358,6 +369,31 @@ FastAPI also exposes its normal interactive documentation at `/docs` and OpenAPI
 | PATCH | `/rbac/users/{user_id}/role` | Super admin | Change another user's role and write an audit event |
 | GET | `/rbac/audit-logs` | `audit.view` permission | Return paginated immutable audit records |
 
+### Super Admin (`/super-admin`)
+
+Every endpoint in this router requires the `super_admin` role. Mutations additionally declare their relevant permission dependency and write audit events where applicable.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/super-admin/overview` | Return platform counts, recent audit activity, and service health |
+| GET/POST | `/super-admin/settings` | List or create platform-wide key/value settings |
+| PUT | `/super-admin/settings/{setting_id}` | Update a system setting |
+| GET/POST | `/super-admin/hospitals` | List or create hospital organizations |
+| PUT | `/super-admin/hospitals/{org_id}` | Update organization details or active state |
+| GET/POST | `/super-admin/roles-permissions` | List or create dynamic role-permission grants |
+| DELETE | `/super-admin/roles-permissions/{grant_id}` | Revoke a dynamic role-permission grant |
+| GET/POST | `/super-admin/features` | List or create feature flags |
+| PUT | `/super-admin/features/{flag_id}` | Update a feature flag, including enabled state |
+| GET | `/super-admin/audit-logs` | List audit records with `limit`/`skip` pagination |
+| GET/POST | `/super-admin/admins` | List or create Admin accounts |
+| GET | `/super-admin/admins/{admin_id}` | View one Admin account |
+| PATCH | `/super-admin/admins/{admin_id}/reset-password` | Replace an Admin password, clear reset tokens, and write an audit event |
+| PUT | `/super-admin/admins/{admin_id}/activate` | Reactivate an Admin account |
+| PUT | `/super-admin/admins/{admin_id}/deactivate` | Deactivate an Admin account |
+| GET | `/super-admin/system-health` | Check database and Redis availability |
+
+Dynamic grants cannot assign administrative-only permissions to operational roles. Duplicate grants, setting keys, feature names, and administrator emails are rejected.
+
 ## 9. Frontend routes
 
 ### Public routes
@@ -408,6 +444,33 @@ Permission-specific receptionist links are hidden when the login-cached permissi
 - `/admin/patients`: all patients
 - `/admin/appointments`: all appointments
 - `/admin/billing`: collected revenue, pending dues, recent transactions
+
+### Super Admin portal
+
+- `/super-admin/home`: live resource counts and database/Redis status
+- `/super-admin/admins`: create, list, activate, and deactivate Admin accounts; detail pages can reset an Admin password
+- `/super-admin/hospitals`: create organizations and toggle active state
+- `/super-admin/roles`: read-only role hierarchy and responsibility reference
+- `/super-admin/permissions`: create and revoke dynamic role grants
+- `/super-admin/settings`: create and update platform-wide system settings
+- `/super-admin/features`: create and toggle feature flags
+- `/super-admin/audit-logs`: read audit history
+- `/super-admin/system-health`: inspect database and Redis availability
+
+The organization, settings, permissions, feature-flag, and administrator screens use Server Actions in `frontend/app/actions/superAdmin.ts` (with administrator creation shared from `staff.ts`), show inline success/error feedback, and revalidate affected pages after successful mutations. `/super-admin/admins/[id]` shows account details and a confirmed password-reset form; organization records and feature descriptions are editable.
+
+### Other enterprise portals
+
+- `/manager`: home, staff, departments, doctors, appointments, reports, and analytics
+- `/nurse`: home, assigned patients and patient detail, vitals, notes, and tasks
+- `/pharmacy`: home, prescriptions, medicines, inventory, alerts, dispensing, purchases, and suppliers
+- `/lab`: home, orders, samples, results, and reports
+- `/radiology`: home, orders, studies, and reports
+- `/accountant`: home, billing, transactions, expenses, refunds, daily closing, and reports
+- `/insurance`: home, providers, policies, claims, documents, and payments
+- `/ambulance`: home, requests, trips, and vehicle
+
+These layouts validate the live role and effective permission set. Most pages read live API data through the shared enterprise resource renderer; several non-Super-Admin create/update workflows still require direct API use.
 
 ## 10. Data model
 
@@ -476,6 +539,13 @@ Central identity record.
 - Indexed by actor/time, action/time, and resource identity
 - Sensitive key names such as passwords, secrets, hashes, tokens, cookies, and authorization values are removed before persistence
 
+### Super Admin platform tables
+
+- `system_settings`: unique setting key, nullable value/description, update timestamp, and updating user
+- `role_permissions`: unique role/permission pair, description, creator, and creation timestamp; these grants augment the static role permission map
+- `feature_flags`: unique feature name, integer-backed enabled flag, description, updater, and update timestamp
+- `organizations`: hospital name and contact details with integer-backed active state and timestamps
+
 SQLAlchemy relationships and explicit cascade rules are not defined; joins are performed manually using foreign-key IDs.
 
 ## 11. Configuration
@@ -496,6 +566,9 @@ SMTP_USERNAME=your_email@gmail.com
 SMTP_PASSWORD=your_gmail_app_password
 SMTP_FROM_EMAIL=your_email@gmail.com
 SMTP_FROM_NAME=Hospital Management System
+CORS_ORIGINS=http://localhost:3000
+CELERY_BROKER_URL=redis://localhost:6379/0
+CELERY_RESULT_BACKEND=redis://localhost:6379/1
 ```
 
 Important details:
@@ -504,6 +577,13 @@ Important details:
 - Docker Compose uses the same `SECRET_KEY` and `ALGORITHM` names as runtime settings.
 - Use a Gmail App Password rather than a normal Gmail password when Gmail SMTP is selected.
 - Secrets and local environment files are ignored by Git; `.env.example` is intentionally tracked.
+
+For the root Docker Compose `.env`, database credentials are accompanied by these optional published-port settings:
+
+```env
+FRONTEND_PORT=3000
+BACKEND_PORT=8000
+```
 
 ### Frontend environment variable
 
@@ -537,7 +617,7 @@ uvicorn app.main:app --reload --port 8000
 
 Review `backend/.env` before initializing. `init_db.py` derives all connection details from `DATABASE_URL` and always applies the Alembic chain; it creates no users or demo data.
 
-To bootstrap an administrator explicitly, set `ADMIN_NAME`, `ADMIN_ROLE` (`admin` or `super_admin`), `ADMIN_EMAIL`, and a strong `ADMIN_PASSWORD`, then run `python create_admin.py`. The script has no default credentials.
+To bootstrap an administrator explicitly, set `ADMIN_NAME`, `ADMIN_ROLE` (`admin` or `super_admin`), `ADMIN_EMAIL`, and a strong `ADMIN_PASSWORD`, then run `python create_admin.py`. The script has no default credentials. It validates the email address, normalizes it to lowercase, and rejects duplicate users.
 
 ### Frontend
 
@@ -571,8 +651,8 @@ docker compose up --build
 
 Current Compose topology:
 
-- frontend: host port 3000
-- backend: host port 8000, with readiness checks
+- frontend: `${FRONTEND_PORT:-3000}` on the host, container port 3000
+- backend: `${BACKEND_PORT:-8000}` on the host, container port 8000, with readiness checks
 - MySQL 8: internal `db` service with persistent `db_data`
 - Redis: Celery broker/result backend
 - migrate: one-shot `alembic upgrade head`
@@ -616,12 +696,12 @@ These are current implementation facts, not completed features:
 - Prescription, appointment completion, and exactly one bill are committed atomically with uniqueness/idempotency protection.
 - Consultation prices come from each doctor's configured `consultation_fee`; the legacy receipt line-item split remains presentation-only.
 - Deleting or changing referenced records lacks an explicit retention/cascade policy.
-- Hospital settings can be read/created but have no update endpoint or admin settings page.
+- Receipt-oriented `hospital_settings` can be read/created but have no update endpoint or Admin settings page. This is separate from the editable Super Admin `system_settings` key/value store.
 - `can_view_reports` exists but has no matching receptionist report route/UI.
 
 ### Frontend and user experience
 
-- Enterprise dashboard shells validate the live backend role and permission list before rendering.
+- Enterprise dashboard shells validate the live backend role and permission list before rendering. Super Admin and Admin route groups require their exact live roles.
 - Several older frontend values still use `any`, weakening the benefit of strict TypeScript.
 - Most errors are reduced to generic messages, and some page-level data requests throw without a local error boundary.
 - Polling every five seconds can create unnecessary load as usage grows.
@@ -640,8 +720,8 @@ These are current implementation facts, not completed features:
 ## 16. Recommended development priorities
 
 1. Add rate limits and a CSRF-focused review for public authentication and cookie-backed actions.
-2. Add hospital/organization scoping before claiming true multi-hospital isolation.
-3. Build typed interactive create/update forms for the API-first enterprise portal screens.
+2. Implement the staged, data-preserving organization isolation design in `docs/organization-scoping-plan.md` before claiming true multi-hospital isolation.
+3. Build typed interactive create/update forms for the remaining API-first enterprise portal screens; the core Super Admin management screens now have forms and Server Actions.
 4. Add browser end-to-end tests for every role's complete journey.
 5. Replace remaining broad `any` usage and Pydantic v1-style `Config` declarations.
 6. Configure a real email/SMS/WhatsApp adapter instead of the fail-closed Celery placeholder.
@@ -661,12 +741,13 @@ At minimum, regression testing should cover:
 8. Admin dashboards and billing totals match database records.
 9. Expired, invalid, and reused verification/reset tokens are rejected.
 10. Disabled users and inactive employees cannot continue to use existing or new sessions.
+11. Super Admin creates and disables an Admin, resets the Admin password, manages an organization, setting, role grant, and feature flag, and each mutation is reflected in the UI and audit history without persisting password data in audit values.
 
 ## 18. Current verification status
 
-- The nested repository is on branch `main`.
-- The backend suite has 42 passing tests, including isolated fresh/preservation/destructive-refusal migration checks, cross-phase business rules, and doctor-patient clinical assignment isolation.
-- Alembic is at `20260826_0002 (head)` on the local MySQL database; `alembic check` reports no pending model operations. The migration preserved 3 users and 2 patients and replaced only 42 verified-empty unmanaged enterprise tables.
-- Docker Compose configuration validation passes when required MySQL secrets are supplied. The current local root `.env` still needs `MYSQL_ROOT_PASSWORD` and `MYSQL_PASSWORD` before Compose can start.
-- Frontend TypeScript checking, Next.js ESLint validation, and the optimized production build pass.
-- The optimized Next.js production build covers 85 routes and passes type checking and linting.
+- The working tree is based on branch `main` at `a76521a`; the authorization-separation changes are not yet committed.
+- Backend: 63 tests pass. Coverage includes role login, public patient registration, exact Super Admin/Admin API denial, forced Admin creation, Super Admin-driven Admin password reset, self-promotion denial, deactivated sessions, legacy receptionist permissions, enterprise workflows, audit sanitization, and migration preservation/refusal.
+- Frontend: 3 role-routing authorization tests pass; TypeScript and Next.js ESLint pass; the optimized production build succeeds and generates 87 routes, including `/super-admin/admins/[id]`.
+- No database model or Alembic change was required. The last recorded database verification remains `20260826_0002 (head)` with no pending model operations.
+- Docker Compose was not started during this change. It still requires non-empty `MYSQL_ROOT_PASSWORD`, `MYSQL_PASSWORD`, and `SECRET_KEY` values in the untracked root `.env`; secret values were not inspected.
+- `npm ci` reports 8 dependency vulnerabilities (7 high, 1 critical), including a warning that pinned Next.js `14.2.5` should be upgraded to a patched release. Dependency upgrades remain a separate compatibility/security task.

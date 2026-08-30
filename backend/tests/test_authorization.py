@@ -9,16 +9,25 @@ def test_unauthenticated_request_is_rejected(client):
     assert client.get("/rbac/me/permissions").status_code == 401
 
 
-def test_administrative_role_hierarchy(client, create_user, login):
+def test_platform_and_hospital_admin_roles_do_not_inherit_each_other(client, create_user, login):
     super_admin = create_user("super_admin")
+    admin = create_user("admin")
     manager = create_user("hospital_manager")
 
     assert client.get(
-        "/probes/admin", headers=headers(login(super_admin))
+        "/probes/admin", headers=headers(login(admin))
     ).status_code == 200
+    assert client.get(
+        "/probes/admin", headers=headers(login(super_admin))
+    ).status_code == 403
     assert client.get(
         "/probes/admin", headers=headers(login(manager))
     ).status_code == 403
+
+    super_permissions = get_role_permissions("super_admin")
+    assert Permission.settings_manage.value in super_permissions
+    assert Permission.doctors_manage.value not in super_permissions
+    assert Permission.patients_view.value not in super_permissions
 
 
 def test_operational_role_does_not_inherit_admin_permissions():

@@ -10,6 +10,8 @@ import {
   deleteRoleGrantAction,
   setFeatureFlagEnabledAction,
   setOrganizationActiveAction,
+  updateFeatureFlagDescriptionAction,
+  updateOrganizationAction,
   updateSystemSettingAction,
 } from '@/app/actions/superAdmin'
 import SubmitButton from '@/components/SubmitButton'
@@ -96,6 +98,14 @@ export function OrganizationsPanel({ organizations }: { organizations: Organizat
     setSuccess('Organization status updated.')
   }
 
+  async function update(formData: FormData) {
+    setError('')
+    setSuccess('')
+    const result = await updateOrganizationAction(formData)
+    if (result.error) return setError(result.error)
+    setSuccess('Organization details updated.')
+  }
+
   return (
     <div className="space-y-6">
       <Feedback error={error} success={success} />
@@ -122,12 +132,16 @@ export function OrganizationsPanel({ organizations }: { organizations: Organizat
               <tr><td colSpan={5} className="p-8 text-center text-gray-500">No organizations created yet. Use the form above to add one.</td></tr>
             ) : organizations.map((organization) => (
               <tr key={organization.id}>
-                <td className="p-4 font-medium text-gray-900">{organization.name}</td>
-                <td className="p-4 text-gray-700">
-                  <div>{organization.contact_email || '—'}</div>
-                  <div className="text-gray-500">{organization.contact_phone || '—'}</div>
+                <td colSpan={3} className="p-4">
+                  <form action={update} className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <input type="hidden" name="id" value={organization.id} />
+                    <input name="name" required maxLength={150} defaultValue={organization.name} className="rounded-lg border p-2" aria-label="Organization name" />
+                    <input name="contact_email" type="email" defaultValue={organization.contact_email || ''} placeholder="Contact email" className="rounded-lg border p-2" />
+                    <input name="contact_phone" maxLength={20} defaultValue={organization.contact_phone || ''} placeholder="Contact phone" className="rounded-lg border p-2" />
+                    <input name="address" defaultValue={organization.address || ''} placeholder="Address" className="rounded-lg border p-2" />
+                    <SubmitButton className="rounded-lg border border-blue-600 px-3 py-2 text-blue-700 hover:bg-blue-50 xl:col-start-4">Save details</SubmitButton>
+                  </form>
                 </td>
-                <td className="max-w-sm p-4 text-gray-700">{organization.address || '—'}</td>
                 <td className="p-4">{organization.is_active ? 'Active' : 'Inactive'}</td>
                 <td className="p-4">
                   <form action={toggle}>
@@ -291,6 +305,14 @@ export function FeatureFlagsPanel({ flags }: { flags: FeatureFlagSummary[] }) {
     setSuccess('Feature flag updated.')
   }
 
+  async function updateDescription(formData: FormData) {
+    setError('')
+    setSuccess('')
+    const result = await updateFeatureFlagDescriptionAction(formData)
+    if (result.error) return setError(result.error)
+    setSuccess('Feature flag description updated.')
+  }
+
   return (
     <div className="space-y-6">
       <Feedback error={error} success={success} />
@@ -313,7 +335,13 @@ export function FeatureFlagsPanel({ flags }: { flags: FeatureFlagSummary[] }) {
             ) : flags.map((flag) => (
               <tr key={flag.id}>
                 <td className="p-4 font-medium text-gray-900">{flag.feature_name}</td>
-                <td className="p-4 text-gray-600">{flag.description || '—'}</td>
+                <td className="p-4 text-gray-600">
+                  <form action={updateDescription} className="flex min-w-72 gap-2">
+                    <input type="hidden" name="id" value={flag.id} />
+                    <input name="description" defaultValue={flag.description || ''} placeholder="Description" className="min-w-0 flex-1 rounded-lg border p-2" />
+                    <SubmitButton className="rounded-lg border px-3 py-2 hover:bg-gray-50">Save</SubmitButton>
+                  </form>
+                </td>
                 <td className="p-4">{flag.is_enabled ? 'Enabled' : 'Disabled'}</td>
                 <td className="p-4">
                   <form action={toggle}>

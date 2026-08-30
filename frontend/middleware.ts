@@ -1,22 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-
-// Define the exact home route for each role
-const roleHomeMap: Record<string, string> = {
-  'super_admin': '/super-admin/home',
-  'admin': '/admin/home',
-  'hospital_manager': '/manager/home',
-  'doctor': '/doctor/home',
-  'nurse': '/nurse/home',
-  'receptionist': '/receptionist/home',
-  'pharmacist': '/pharmacy/home',
-  'lab_technician': '/lab/home',
-  'radiologist': '/radiology/home',
-  'accountant': '/accountant/home',
-  'insurance_officer': '/insurance/home',
-  'ambulance_staff': '/ambulance/home',
-  'patient': '/patient/home',
-}
+import { protectedPortalRedirect, roleHome } from '@/lib/roleRoutes'
 
 // Paths that do not require authentication
 const publicPaths = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email']
@@ -46,8 +30,17 @@ export function middleware(request: NextRequest) {
 
   // 2. If trying to access public path (like login) while already logged in
   if (token && userRole && isPublicPath) {
-    const homeRoute = roleHomeMap[userRole] || '/login'
+    const homeRoute = roleHome(userRole)
     return NextResponse.redirect(new URL(homeRoute, request.url))
+  }
+
+  // Fast UX guard based on the HttpOnly role cookie. The live backend role
+  // check in each layout and FastAPI dependencies remain authoritative.
+  if (token && userRole) {
+    const routeRedirect = protectedPortalRedirect(pathname, userRole)
+    if (routeRedirect) {
+      return NextResponse.redirect(new URL(routeRedirect, request.url))
+    }
   }
 
   return NextResponse.next()

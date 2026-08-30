@@ -117,6 +117,27 @@ export async function addEmployeeAction(formData: FormData) {
   revalidatePath('/admin/employees')
 }
 
+export async function updateEmployeeAction(formData: FormData): Promise<void> {
+  const id = formData.get('id')
+  const payload = {
+    designation: formData.get('designation'),
+    shift_start: formData.get('shift_start') || null,
+    shift_end: formData.get('shift_end') || null,
+    status: formData.get('status'),
+  }
+  const res = await fetch(`${API_URL}/admin/employees/${id}`, {
+    method: 'PATCH',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  })
+  if (res.status === 401) redirect('/login')
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}))
+    throw new Error(errorData.detail || 'Failed to update employee')
+  }
+  revalidatePath('/admin/employees')
+}
+
 export async function updateEmployeePermissionsAction(formData: FormData): Promise<any> {
   const id = formData.get('id')
   const payload = {

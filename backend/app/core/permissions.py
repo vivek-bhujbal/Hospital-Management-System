@@ -187,14 +187,13 @@ ROLE_PERMISSIONS: Dict[str, FrozenSet[str]] = {
         Permission.billing_create.value,
         Permission.billing_collect.value,
         Permission.billing_refund.value,
-        Permission.settings_manage.value,
-        Permission.organizations_manage.value,
-        Permission.features_view.value,
-        Permission.notifications_manage.value,
     }),
     UserRole.super_admin.value: frozenset({
         Permission.staff_manage_roles.value,
+        Permission.settings_manage.value,
+        Permission.organizations_manage.value,
         Permission.features_manage.value,
+        Permission.notifications_manage.value,
     }),
     UserRole.nurse.value: frozenset({
         Permission.patients_view.value,

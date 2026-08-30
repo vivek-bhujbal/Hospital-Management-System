@@ -8,20 +8,13 @@ import {
   UserRole,
 } from '@/lib/permissions'
 import { fetchAPI } from '@/lib/api'
+import { ROLE_HOME } from '@/lib/roleRoutes'
 
 interface DashboardLayoutProps {
   children: React.ReactNode
   role: UserRole
   allowedRoles?: readonly UserRole[]
   requiredPermission?: Permission
-}
-
-const ROLE_HOME: Record<UserRole, string> = {
-  patient: '/patient/home', doctor: '/doctor/home', receptionist: '/receptionist/home',
-  admin: '/admin/home', super_admin: '/super-admin/home', hospital_manager: '/manager/home',
-  nurse: '/nurse/home', pharmacist: '/pharmacy/home', lab_technician: '/lab/home',
-  radiologist: '/radiology/home', accountant: '/accountant/home',
-  insurance_officer: '/insurance/home', ambulance_staff: '/ambulance/home',
 }
 
 interface CurrentUserAuthorization {

@@ -17,7 +17,7 @@ from app.core.security import get_password_hash
 from app.database import Base, get_db
 from app.models.all_models import Employee, EmployeePermission, User
 from app.routers import (
-    accountant, ambulance, appointments, auth, billing, doctors, employees, insurance,
+    accountant, admin, ambulance, appointments, auth, billing, doctors, employees, insurance,
     lab, manager, nurse, pharmacy, prescriptions, radiology, rbac, super_admin,
 )
 
@@ -41,6 +41,7 @@ def override_get_db():
 test_app = FastAPI()
 test_app.dependency_overrides[get_db] = override_get_db
 test_app.include_router(auth.router, prefix="/auth")
+test_app.include_router(admin.router, prefix="/admin")
 test_app.include_router(employees.router, prefix="/admin/employees")
 test_app.include_router(rbac.router, prefix="/rbac")
 test_app.include_router(appointments.router, prefix="/appointments")

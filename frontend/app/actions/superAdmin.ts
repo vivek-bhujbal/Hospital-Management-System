@@ -37,7 +37,7 @@ async function errorDetail(response: Response, fallback: string): Promise<string
 
 async function apiAction(
   endpoint: string,
-  method: 'POST' | 'PUT' | 'DELETE',
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   body: Record<string, unknown> | undefined,
   fallback: string,
 ): Promise<SuperAdminActionResult> {
@@ -80,6 +80,21 @@ export async function setOrganizationActiveAction(formData: FormData): Promise<S
   const isActive = value(formData, 'is_active') === 'true'
   const result = await apiAction(`/super-admin/hospitals/${id}`, 'PUT', {
     is_active: isActive,
+  }, 'Failed to update organization')
+  if (result.success) {
+    revalidatePath('/super-admin/home')
+    revalidatePath('/super-admin/hospitals')
+  }
+  return result
+}
+
+export async function updateOrganizationAction(formData: FormData): Promise<SuperAdminActionResult> {
+  const id = value(formData, 'id')
+  const result = await apiAction(`/super-admin/hospitals/${id}`, 'PUT', {
+    name: value(formData, 'name'),
+    address: optionalValue(formData, 'address'),
+    contact_email: optionalValue(formData, 'contact_email'),
+    contact_phone: optionalValue(formData, 'contact_phone'),
   }, 'Failed to update organization')
   if (result.success) {
     revalidatePath('/super-admin/home')
@@ -148,6 +163,15 @@ export async function setFeatureFlagEnabledAction(formData: FormData): Promise<S
   return result
 }
 
+export async function updateFeatureFlagDescriptionAction(formData: FormData): Promise<SuperAdminActionResult> {
+  const id = value(formData, 'id')
+  const result = await apiAction(`/super-admin/features/${id}`, 'PUT', {
+    description: optionalValue(formData, 'description'),
+  }, 'Failed to update feature flag description')
+  if (result.success) revalidatePath('/super-admin/features')
+  return result
+}
+
 export async function setAdminActiveAction(formData: FormData): Promise<SuperAdminActionResult> {
   const id = value(formData, 'id')
   const action = value(formData, 'is_active') === 'true' ? 'activate' : 'deactivate'
@@ -158,5 +182,28 @@ export async function setAdminActiveAction(formData: FormData): Promise<SuperAdm
     `Failed to ${action} administrator`,
   )
   if (result.success) revalidatePath('/super-admin/admins')
+  return result
+}
+
+export async function resetAdminPasswordAction(formData: FormData): Promise<SuperAdminActionResult> {
+  const id = value(formData, 'id')
+  const newPasswordEntry = formData.get('new_password')
+  const confirmPasswordEntry = formData.get('confirm_password')
+  const newPassword = typeof newPasswordEntry === 'string' ? newPasswordEntry : ''
+  const confirmPassword = typeof confirmPasswordEntry === 'string' ? confirmPasswordEntry : ''
+
+  if (!newPassword) return { error: 'Enter a new password.' }
+  if (newPassword !== confirmPassword) return { error: 'Passwords do not match.' }
+
+  const result = await apiAction(
+    `/super-admin/admins/${id}/reset-password`,
+    'PATCH',
+    { new_password: newPassword },
+    'Failed to reset administrator password',
+  )
+  if (result.success) {
+    revalidatePath('/super-admin/admins')
+    revalidatePath(`/super-admin/admins/${id}`)
+  }
   return result
 }

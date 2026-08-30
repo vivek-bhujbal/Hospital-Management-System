@@ -72,10 +72,14 @@ def test_receptionist_permission_change_is_audited(client, db, create_user, logi
 def test_audit_reader_requires_permission(client, create_user, login):
     patient = create_user("patient")
     admin = create_user("admin")
+    super_admin = create_user("super_admin")
 
     assert client.get(
         "/rbac/audit-logs", headers=headers(login(patient))
     ).status_code == 403
     assert client.get(
         "/rbac/audit-logs", headers=headers(login(admin))
+    ).status_code == 403
+    assert client.get(
+        "/rbac/audit-logs", headers=headers(login(super_admin))
     ).status_code == 200

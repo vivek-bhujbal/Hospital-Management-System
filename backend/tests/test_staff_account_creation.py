@@ -49,7 +49,7 @@ def test_only_super_admin_can_create_admin_and_creation_is_audited(
     assert payload["email"] in [item["email"] for item in listed.json()]
 
 
-def test_admin_and_super_admin_can_create_operational_accounts(
+def test_only_admin_can_create_operational_accounts(
     client, db, create_user, login
 ):
     admin = create_user("admin")
@@ -60,7 +60,7 @@ def test_admin_and_super_admin_can_create_operational_accounts(
         json=account_payload("nurse", "nurse"),
         headers=headers(login(admin)),
     )
-    pharmacist_response = client.post(
+    denied_super_admin = client.post(
         "/manager/staff",
         json=account_payload("pharmacist", "pharmacist"),
         headers=headers(login(super_admin)),
@@ -68,9 +68,8 @@ def test_admin_and_super_admin_can_create_operational_accounts(
 
     assert nurse_response.status_code == 201
     assert nurse_response.json()["role"] == "nurse"
-    assert pharmacist_response.status_code == 201
-    assert pharmacist_response.json()["role"] == "pharmacist"
-    assert db.query(AuditLog).filter_by(action="staff.account_created").count() == 2
+    assert denied_super_admin.status_code == 403
+    assert db.query(AuditLog).filter_by(action="staff.account_created").count() == 1
 
 
 def test_hospital_manager_cannot_create_staff_and_admin_role_is_rejected(

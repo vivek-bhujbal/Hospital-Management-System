@@ -3,8 +3,9 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from app.core.deps import require_permission
+from app.core.deps import require_permission, require_role
 from app.core.permissions import Permission
+from app.core.roles import UserRole
 from app.core.security import get_password_hash
 from app.database import get_db
 from app.models.all_models import Employee, EmployeePermission, User
@@ -18,7 +19,7 @@ from app.schemas.all_schemas import (
 from app.services.audit_service import record_audit_event
 
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_role(UserRole.admin))])
 allow_staff_view = require_permission(Permission.staff_view)
 allow_staff_create = require_permission(Permission.staff_create)
 allow_staff_update = require_permission(Permission.staff_update)

@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
+import Link from 'next/link'
 
 import { createAdminAccountAction } from '@/app/actions/staff'
 import { setAdminActiveAction } from '@/app/actions/superAdmin'
@@ -69,7 +70,7 @@ export default function AdminAccountsPanel({ accounts }: { accounts: AccountSumm
       <section className="overflow-x-auto rounded-xl border bg-white shadow-sm">
         <table className="min-w-full divide-y text-sm">
           <thead className="bg-gray-50 text-left text-gray-600">
-            <tr><th className="p-4">Name</th><th className="p-4">Email</th><th className="p-4">Status</th><th className="p-4">Created</th><th className="p-4">Action</th></tr>
+            <tr><th className="p-4">Name</th><th className="p-4">Email</th><th className="p-4">Status</th><th className="p-4">Created</th><th className="p-4">Actions</th></tr>
           </thead>
           <tbody className="divide-y">
             {accounts.length === 0 ? (
@@ -81,13 +82,16 @@ export default function AdminAccountsPanel({ accounts }: { accounts: AccountSumm
                 <td className="p-4">{account.is_active ? 'Active' : 'Disabled'}</td>
                 <td className="p-4 text-gray-600">{new Date(account.created_at).toLocaleString()}</td>
                 <td className="p-4">
-                  <form action={toggleStatus}>
-                    <input type="hidden" name="id" value={account.id} />
-                    <input type="hidden" name="is_active" value={String(!account.is_active)} />
-                    <SubmitButton className="rounded-lg border px-3 py-2 hover:bg-gray-50">
-                      {account.is_active ? 'Deactivate' : 'Activate'}
-                    </SubmitButton>
-                  </form>
+                  <div className="flex items-center gap-2">
+                    <Link href={`/super-admin/admins/${account.id}`} className="rounded-lg border px-3 py-2 text-blue-700 hover:bg-blue-50">View</Link>
+                    <form action={toggleStatus}>
+                      <input type="hidden" name="id" value={account.id} />
+                      <input type="hidden" name="is_active" value={String(!account.is_active)} />
+                      <SubmitButton className="rounded-lg border px-3 py-2 hover:bg-gray-50">
+                        {account.is_active ? 'Deactivate' : 'Activate'}
+                      </SubmitButton>
+                    </form>
+                  </div>
                 </td>
               </tr>
             ))}

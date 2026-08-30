@@ -21,10 +21,11 @@ class UserRole(str, Enum):
 RoleLike = Union[UserRole, str]
 ROLE_VALUES = tuple(role.value for role in UserRole)
 
-# Only administrative roles inherit. Operational roles are intentionally absent.
+# Hospital Admin retains the legacy Hospital Manager capability baseline. Super
+# Admin is deliberately standalone: platform ownership is a management
+# hierarchy, not permission inheritance into hospital operations.
 ROLE_PARENTS = {
     UserRole.admin.value: UserRole.hospital_manager.value,
-    UserRole.super_admin.value: UserRole.admin.value,
 }
 
 

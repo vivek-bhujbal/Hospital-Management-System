@@ -121,6 +121,12 @@ class StaffAccountResponse(BaseModel):
     profile_id: Optional[int] = None
     created_at: datetime
 
+
+class AdminPasswordReset(BaseModel):
+    new_password: str
+
+    _validate_password = field_validator('new_password')(validate_password_strength)
+
 class EffectivePermissionsResponse(BaseModel):
     role: RoleEnum
     permissions: List[str]
