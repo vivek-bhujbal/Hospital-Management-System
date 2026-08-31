@@ -1,5 +1,8 @@
-import EnterpriseResourcePage from '@/components/EnterpriseResourcePage'
+import { fetchAPI } from '@/lib/api'
+import type { LabOrder } from '@/lib/labTypes'
+import LabOrderDirectory from './LabOrderDirectory'
 
-export default function LabOrders() {
-  return <EnterpriseResourcePage title="Lab orders" endpoint="/lab/orders" />
+export default async function LabOrdersPage() {
+  const orders = await fetchAPI('/lab/orders') as LabOrder[]
+  return <LabOrderDirectory orders={orders}/>
 }

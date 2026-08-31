@@ -70,12 +70,6 @@ export default async function EditPermissionsPage({ params }: { params: { id: st
               description="Allow employee to process and collect patient bills."
               defaultChecked={perms.can_collect_billing}
             />
-            <PermissionToggle 
-              name="can_view_reports" 
-              label="View Analytics & Reports" 
-              description="Allow employee to view hospital financial and appointment reports."
-              defaultChecked={perms.can_view_reports}
-            />
           </div>
 
           <div className="mt-8 pt-6 border-t border-gray-100 flex justify-end">

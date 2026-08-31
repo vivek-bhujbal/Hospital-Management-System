@@ -15,7 +15,7 @@ The application supports thirteen user roles. The original roles remain backward
 - `receptionist`: registers walk-in patients, schedules and checks in appointments, and collects payments, subject to per-employee permissions.
 - `admin`: views hospital-wide metrics and manages doctors, receptionist employees, permissions, patients, appointments, and billing reports.
 
-Enterprise roles are `super_admin`, `hospital_manager`, `nurse`, `pharmacist`, `lab_technician`, `radiologist`, `accountant`, `insurance_officer`, and `ambulance_staff`. Their backend modules cover organizations/settings/audit, departmental reporting, assignment-scoped nursing, pharmacy stock and dispensing, laboratory orders/results, radiology studies/reports, accounting, insurance claims, and ambulance dispatch. The frontend exposes authenticated live-data portals for each role. Super Admin now has interactive management workflows; create/update workflows remain API-first in several other enterprise screens.
+Enterprise roles are `super_admin`, `hospital_manager`, `nurse`, `pharmacist`, `lab_technician`, `radiologist`, `accountant`, `insurance_officer`, and `ambulance_staff`. Hospital Manager is a read-only hospital-operations role; it monitors patient flow, appointments, staffing, doctors, departments, reports, and revenue summaries without accessing clinical, financial-transaction, or specialist operational modules. Pharmacist is an exact-role pharmacy operator with read-only access to doctor prescriptions, a separate verification state machine, batch inventory adjustments, and atomic dispensing. Lab Technician is an exact-role laboratory operator with assignment-scoped orders, guarded sample/test transitions, draft results, and immutable finalized results. The other backend modules cover organizations/settings/audit, assignment-scoped nursing, radiology studies/reports, accounting, insurance claims, and ambulance dispatch. The frontend exposes authenticated live-data portals for each role.
 
 The active application is the nested repository at `Hospital-Management-System/`. Python files named `generate_*.py`, `setup_*.py`, and frontend refactoring scripts are development/scaffolding utilities; they are not part of the runtime request path.
 
@@ -168,14 +168,15 @@ JWT lifetime uses `ACCESS_TOKEN_EXPIRE_MINUTES`, and all frontend session cookie
 
 ### 5.4 Backend authorization model
 
-`get_current_user` decodes the bearer token, reloads the user by ID, and rejects a user deactivated after token issuance.
+`get_current_user` decodes the bearer token, reloads the user by ID, and rejects a user deactivated after token issuance. Receptionists must also have a linked active `employees` row; missing or inactive employee profiles are rejected for new logins and existing sessions.
 
 Two dependency types enforce access:
 
-- `RoleChecker`: allows a fixed list of roles.
+- `RoleChecker`: allows a fixed list of roles with the documented Admin operational inheritance.
+- `ExactRoleChecker`: requires the stored role without inheritance; Hospital Manager APIs use this guard so an Admin cannot enter the Manager portal/API.
 - `PermissionChecker`: evaluates the role's static and dynamic grants; for receptionists, it also applies the linked active employee's legacy permission overrides.
 
-The public dependency factories are `require_role(...)`, `require_any_role(...)`, and `require_permission(...)`. Admin retains the legacy Hospital Manager capability baseline, but Super Admin is standalone and has only platform mutation permissions. This prevents Super Admin from entering hospital-operational APIs and prevents Admin from entering platform APIs. Operational roles do not inherit administrative permissions.
+The public dependency factories are `require_role(...)`, `require_exact_role(...)`, `require_any_role(...)`, and `require_permission(...)`. Admin retains the legacy Hospital Manager capability baseline where applicable, but the dedicated Manager portal/API requires the exact Hospital Manager role. Super Admin is standalone and has only platform mutation permissions. Operational roles do not inherit administrative permissions.
 
 Receptionist permissions are:
 
@@ -183,13 +184,12 @@ Receptionist permissions are:
 - `can_schedule_appointment`
 - `can_checkin_patient`
 - `can_collect_billing`
-- `can_view_reports`
 
-Login records permissions in an HttpOnly compatibility cookie, but role layouts fetch `/auth/me` on every server render. Role and permission revocations therefore affect the shell immediately; backend permission checks remain the security boundary.
+Login records permissions in an HttpOnly compatibility cookie, but role layouts fetch `/auth/me` on every server render and permission-specific pages fetch `/rbac/me/permissions`. Role and permission revocations therefore affect the shell immediately; backend permission checks remain the security boundary.
 
 ### 5.5 Frontend route protection
 
-Every role layout validates the live backend role before rendering and redirects mismatches to the authenticated role home. Middleware handles session presence and public-route UX; it intentionally does not act as the authorization boundary.
+Every role layout validates the live backend role before rendering and redirects mismatches to the authenticated role home. Middleware handles session presence and public-route UX, blocks all cross-role portal access, and applies explicit route whitelists to the cleaned Receptionist, Doctor, Manager, Nurse, Pharmacist, and Lab Technician portals. Legacy `/pharmacy/*` browser routes redirect to `/pharmacist/home`; live layout checks and FastAPI dependencies remain the authorization boundary.
 
 The frontend stores the backend-calculated effective permission list in an HttpOnly session cookie and uses centralized typed helpers for page redirects and menu visibility. This remains a presentation layer; FastAPI permission dependencies are authoritative.
 
@@ -201,11 +201,11 @@ The frontend stores the backend-calculated effective permission list in an HttpO
 | View/update own profile | Yes | Yes | No | No dedicated profile screen |
 | List active doctors | Yes | Yes | Yes | Yes |
 | Book appointment | Own patient profile | No | With schedule permission | Yes |
-| View own appointments | Yes | Assigned via staff endpoint | All via staff endpoint | All |
+| View own appointments | Yes | Assigned doctor only | All via staff endpoint | All |
 | Register walk-in patient | No | No | With register permission | Yes |
 | Check in patient | No | No | With check-in permission | Yes |
-| View patient directory | No | Yes | Yes | Yes |
-| View patient history | No | Yes | No | Yes |
+| View patient directory | No | Assigned patients only | Yes | Yes |
+| View patient history | No | Assigned patients only | No | Yes |
 | Create prescription/complete consultation | No | Assigned doctor only | No | No |
 | View own prescriptions | Yes | No dedicated list | No | No dedicated list |
 | Collect payment | No | No | With billing permission | Yes |
@@ -243,26 +243,19 @@ requested → confirmed → checked_in → in_progress → completed
       └────────────────────────────────────────────→ cancelled
 ```
 
-This is the conceptual lifecycle, but current endpoints do not strictly enforce it:
+New bookings are always stored as `requested`, regardless of an input status. Confirm, check-in, consultation start, completion, and cancellation enforce their allowed predecessor states. Booking rejects missing/inactive doctors, past dates/times, times outside doctor working hours, doctor slot collisions, and a patient being double-booked in the same slot.
 
-- New bookings are always stored as `requested`, regardless of an input status.
-- A receptionist/admin can set any existing appointment to `confirmed`.
-- A receptionist/admin can set any existing appointment to `checked_in` and record `checked_in_at`.
-- There is no endpoint that sets `in_progress` or `cancelled`.
-- Creating a prescription sets the appointment directly to `completed`.
-- Transition preconditions are not validated, so confirm/check-in can overwrite other statuses.
-- There is no prevention of doctor time-slot collisions or duplicate bookings.
-
-Patients can only book for their own linked patient ID. A receptionist's schedule permission is manually checked in the booking route; admins bypass it by role.
+Patients can only book for their own linked patient ID. Receptionist booking and confirmation require `can_schedule_appointment`; check-in requires `can_checkin_patient`.
 
 ### 7.4 Consultation and prescription
 
-1. Doctor sees assigned appointments using `/appointments/?doctor_id=me`.
-2. Doctor selects an appointment and submits diagnosis, medicine, dosage, and notes.
-3. Backend verifies that the appointment belongs to the logged-in doctor's profile.
-4. In one transaction, the backend creates a prescription, marks the appointment `completed`, and creates a pending bill.
+1. Doctor sees only assigned appointments using `/appointments/?doctor_id=me`; omitting the filter is still forced to the logged-in doctor.
+2. Doctor starts an assigned `checked_in` appointment with `PATCH /appointments/{id}/start`, which changes it to `in_progress`.
+3. Doctor reviews the patient/history and submits diagnosis, medicines, dosage, instructions, and clinical notes.
+4. Backend verifies the exact Doctor role, doctor profile, appointment ownership, and `in_progress` state.
+5. In one transaction, the backend creates one prescription, marks the appointment `completed`, and creates one pending bill.
 
-The bill amount is currently hard-coded to `500.00`.
+Repeated completion safely returns the existing prescription and unique appointment constraints prevent duplicate prescriptions or bills. The bill amount comes from the assigned doctor's configured `consultation_fee`; it is never accepted from the frontend.
 
 ### 7.5 Billing and receipts
 
@@ -295,8 +288,8 @@ All endpoints are under the FastAPI service at port `8000`. Except where marked 
 |---|---|---|---|
 | GET | `/patients/me` | Patient | Get own patient profile |
 | PUT | `/patients/me` | Patient | Replace editable own-profile fields |
-| GET | `/patients/{id}/history` | Doctor, admin | Return appointments and prescriptions for a patient |
-| GET | `/patients/` | Receptionist, doctor, admin | List all patient profiles |
+| GET | `/patients/{id}/history` | Doctor, admin | Return the patient plus appointment/prescription history; Doctor access requires an assignment |
+| GET | `/patients/` | Receptionist, doctor, admin | List patient profiles; Doctor results are restricted to patients with assigned appointments |
 | POST | `/patients/` | Admin or receptionist with register permission | Create a walk-in patient profile |
 
 ### Doctors (`/doctors`)
@@ -313,16 +306,17 @@ All endpoints are under the FastAPI service at port `8000`. Except where marked 
 |---|---|---|---|
 | POST | `/appointments/` | Patient, receptionist, admin | Create requested appointment; patient ownership and receptionist permission are checked |
 | GET | `/appointments/me` | Patient | List own appointments, newest first |
-| GET | `/appointments/` | Receptionist, doctor, admin | List/filter appointments by `date` and `doctor_id`; doctors may use `doctor_id=me` |
+| GET | `/appointments/` | Receptionist, doctor, admin | List/filter appointments by `date` and `doctor_id`; Doctor requests are always scoped to their own profile |
 | PATCH | `/appointments/{id}/confirm` | Admin or receptionist with schedule permission | Set status to confirmed |
 | PATCH | `/appointments/{id}/checkin` | Admin or receptionist with check-in permission | Set status to checked in |
+| PATCH | `/appointments/{id}/start` | Doctor | Start an assigned checked-in consultation; repeat start is idempotent |
 
 ### Prescriptions (`/prescriptions`)
 
 | Method | Path | Access | Purpose |
 |---|---|---|---|
 | GET | `/prescriptions/me` | Patient | List prescriptions across own appointments |
-| POST | `/prescriptions/` | Doctor | Create prescription for own appointment, complete it, and create a bill |
+| POST | `/prescriptions/` | Doctor | Complete an owned in-progress consultation and atomically create one prescription and pending bill |
 
 ### Billing (`/billing`)
 
@@ -357,7 +351,62 @@ All endpoints are under the FastAPI service at port `8000`. Except where marked 
 | DELETE | `/admin/employees/{id}` | Admin | Soft-deactivate employee record |
 | PATCH | `/admin/employees/{id}/permissions` | Admin | Replace permission flags |
 
-`GET /receptionists/` is an unauthenticated placeholder that only returns a message and is not used by the frontend.
+The unused `/receptionists/` placeholder router has been removed.
+
+### Nursing (`/nurse`)
+
+Every endpoint in this router requires the exact `nurse` role. Patient, appointment, vital, note, and task reads are limited to patients with an active task assigned to the current Nurse.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/nurse/dashboard` | Assignment-scoped daily metrics, upcoming appointments, and urgent task alerts |
+| GET | `/nurse/patients` | List patients with an active task assigned to the current Nurse |
+| GET | `/nurse/patients/{patient_id}` | Return nursing-relevant patient basics, appointments, read-only prescriptions, vitals, observations, and tasks |
+| GET | `/nurse/appointments` | List appointments for actively assigned patients |
+| GET/POST | `/nurse/vitals` | List assigned-patient observations or append a timestamped vital record |
+| GET | `/nurse/vitals/patient/{patient_id}` | Read the vital history of an assigned patient |
+| POST | `/nurse/notes` | Append a nursing observation for an assigned patient |
+| GET | `/nurse/tasks` | List only the current Nurse's tasks |
+| PUT | `/nurse/tasks/{task_id}` | Start or complete an assigned task using guarded transitions |
+| POST | `/doctors/nursing-tasks` | Allow a Doctor to assign a task for one of the Doctor's own patients to an active Nurse |
+
+There are no Nurse vital update/delete endpoints. Historical vitals are append-only and every create/status mutation writes an audit event.
+
+### Pharmacy (`/pharmacy` API)
+
+Every endpoint requires the exact `pharmacist` role and a focused pharmacy permission. Pharmacy reads join prescriptions to the patient, appointment, and prescribing doctor without allowing mutation of the doctor's prescription row.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/pharmacy/dashboard` | Pending/ready prescription counts, stock alerts, today's dispensing, and recent prescriptions |
+| GET | `/pharmacy/prescriptions` | Search/filter read-only doctor prescriptions with pharmacy workflow status |
+| GET | `/pharmacy/prescriptions/{id}` | Read prescription, patient, doctor, dosage, instructions, and pharmacy status |
+| POST | `/pharmacy/prescriptions/{id}/action` | Guarded `pending → verified → ready_for_dispensing` flow or rejection with a required reason |
+| GET/POST | `/pharmacy/inventory` | List computed stock states or add a non-expired medicine batch |
+| POST | `/pharmacy/inventory/{batch_id}/adjust` | Audited add/count/expired/damaged stock adjustment |
+| GET | `/pharmacy/alerts` | Low-stock, expiring, and expired batch alerts |
+| GET | `/pharmacy/dispensings` | Recent pharmacy dispensing records |
+| POST | `/pharmacy/dispense` | Atomically lock stock, validate readiness/medicine/expiry/availability, reduce inventory, and finalize once |
+
+`pharmacy_prescription_reviews` stores pharmacy metadata separately from `prescriptions`. A unique dispensing constraint and guarded API return `409` for duplicate attempts. Each dispensing audit includes pharmacist, prescription, medicine, batch, quantity, and time. Pharmacist has only `pharmacy.view`, `pharmacy.inventory`, and `pharmacy.dispense`; generic patient, prescription-writing, billing, insurance, laboratory, radiology, and administrative permissions are absent.
+
+### Laboratory (`/lab` API)
+
+Doctors retain only the ability to list active tests and create an order for their own patient/appointment. Laboratory processing endpoints require the exact `lab_technician` role. An unassigned order is visible to technicians until one accepts it; after acceptance, only the assigned technician can view or mutate it.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/lab/dashboard` | Pending orders, collected samples, in-progress/completed/urgent tests, and today's workload |
+| GET | `/lab/orders` | List unassigned orders plus orders assigned to the current technician |
+| GET | `/lab/orders/{id}` | Patient, doctor, instructions, priority, tests, samples, and results for an authorized order |
+| POST | `/lab/orders/{id}/accept` | Atomically assign an open order to the current technician |
+| POST | `/lab/order-items/{id}/sample` | Guarded `ordered → sample_collected` transition with barcode/sample audit |
+| POST | `/lab/order-items/{id}/start` | Guarded `sample_collected → processing` transition |
+| GET/POST | `/lab/results` | List assigned-order results or enter a timestamped draft result for a processing test |
+| PUT | `/lab/results/{id}` | Edit only the entering technician's draft, with old/new audit values |
+| POST | `/lab/results/{id}/finalize` | Validate and lock the result, then complete its test/order as applicable |
+
+The allowed test states are `ordered`, `sample_collected`, `processing`, `completed`, and `cancelled`; clients cannot submit arbitrary status values. Finalized results record patient, order, test, technician, entry/finalization timestamps, and result content. No finalized-result update or delete endpoint exists. Lab Technician has only `laboratory.view`, `laboratory.sample`, and `laboratory.result` and has no generic patient, clinical mutation, payment, pharmacy, radiology, insurance, or administrative access.
 
 FastAPI also exposes its normal interactive documentation at `/docs` and OpenAPI schema at `/openapi.json` unless configuration changes.
 
@@ -416,22 +465,23 @@ Dynamic grants cannot assign administrative-only permissions to operational role
 
 ### Doctor portal
 
-- `/doctor/home`: today's assigned queue and completion counts
-- `/doctor/appointments`: all assigned appointments
-- `/doctor/patients`: patient directory
-- `/doctor/patients/[id]`: a patient's appointment and prescription history
-- `/doctor/consultation`: select an appointment or complete a selected consultation
-- `/doctor/profile`: edit doctor details and schedule
+- `/doctor/home`: clinical-only dashboard with today's totals, waiting/check-in/in-progress/completed counts, upcoming appointment, queue, and status-aware actions
+- `/doctor/appointments`: named assigned appointments, reasons, check-in state, and status-aware view/start/continue actions
+- `/doctor/patients`: searchable directory restricted to patients associated with the Doctor's appointments
+- `/doctor/patients/[id]`: read-only patient basics, appointment history, and prescription history with assignment enforcement
+- `/doctor/consultation`: select a ready appointment, review patient/history, start consultation, and submit diagnosis/medicines/dosage/instructions/notes
+- `/doctor/profile`: edit only the Doctor's own professional/contact/schedule fields; role, account status, fees, and administrative settings are not editable
 
 ### Receptionist portal
 
-- `/receptionist/home`: appointment/check-in overview
-- `/receptionist/register-patient`: create walk-in patient
-- `/receptionist/schedule`: select patient/doctor and create appointment
-- `/receptionist/queue`: view today's queue and check patients in
-- `/receptionist/billing`: list invoices, collect payment, and show receipt data
+- `/receptionist/home`: front-desk overview, pending-work counts, and permission-aware quick actions
+- `/receptionist/patients`: searchable basic patient directory with appointment context
+- `/receptionist/register-patient`: create a walk-in patient and continue to scheduling
+- `/receptionist/schedule`: select a patient, active doctor, date, and unoccupied time slot
+- `/receptionist/queue`: view today's named queue, confirm appointments, and check patients in
+- `/receptionist/billing`: inspect invoices, collect cash/card/UPI payment, and show receipt data
 
-Permission-specific receptionist links are hidden when the login-cached permission value is explicitly false. The corresponding pages also call `requirePermission`.
+Permission-specific receptionist links use live effective permissions. Register, Schedule, and Billing pages also call `requirePermission`; Queue remains visible while its confirm/check-in actions are independently permission-gated.
 
 ### Admin portal
 
@@ -441,6 +491,7 @@ Permission-specific receptionist links are hidden when the login-cached permissi
 - `/admin/doctors/[id]/edit`: edit doctor and reset login password
 - `/admin/employees`: list and add receptionist employees
 - `/admin/employees/[id]/permissions`: edit permissions
+- `/admin/staff`: create clinical and operational staff login accounts, including Hospital Managers; activate/deactivate Manager accounts
 - `/admin/patients`: all patients
 - `/admin/appointments`: all appointments
 - `/admin/billing`: collected revenue, pending dues, recent transactions
@@ -459,18 +510,56 @@ Permission-specific receptionist links are hidden when the login-cached permissi
 
 The organization, settings, permissions, feature-flag, and administrator screens use Server Actions in `frontend/app/actions/superAdmin.ts` (with administrator creation shared from `staff.ts`), show inline success/error feedback, and revalidate affected pages after successful mutations. `/super-admin/admins/[id]` shows account details and a confirmed password-reset form; organization records and feature descriptions are editable.
 
+### Hospital Manager portal
+
+- `/manager/home`: read-only operational dashboard for daily appointments, patients, active doctors/staff, consultations, patient flow, alerts, and department summaries
+- `/manager/appointments`: hospital-wide read-only appointment monitor with client-side date, doctor, department, and status filters
+- `/manager/patients`: searchable operational patient directory; excludes clinical history, address, and blood group
+- `/manager/doctors`: doctor status, availability, department, schedule, and workload monitor
+- `/manager/staff`: read-only staff role, shift, status, and availability monitor
+- `/manager/reports`: date-scoped appointment/patient/staff/department workload and read-only revenue summaries
+- `/manager/departments`: optional supported department monitor; no Manager mutation actions
+
+Manager APIs require the exact `hospital_manager` role plus a relevant read-only permission. The role has no clinical, prescription, payment collection, staff-account, permission/security, department-mutation, pharmacy, laboratory, radiology, accounting, insurance, or ambulance permissions. Admin provisions and activates/deactivates Hospital Manager identities through `/admin/staff`; Super Admin continues to manage Admin identities only. Provisioning never grants the Manager administrative access.
+
+### Nurse portal
+
+- `/nurse/home`: assignment-scoped dashboard with today's patients, waiting patients, vital/task needs, upcoming appointments, and urgent alerts
+- `/nurse/patients`: searchable directory limited to patients with an active task assigned to the Nurse
+- `/nurse/patient/[id]`: nursing-relevant patient detail with read-only appointments, diagnosis/prescriptions, vital history, observations, and tasks
+- `/nurse/appointments`: read-only appointments and task context for actively assigned patients
+- `/nurse/vitals`: append a timestamped vital/observation record and review immutable history
+- `/nurse/tasks`: view assigned tasks and perform only `pending → in_progress → completed` transitions
+
+The Nurse role has only focused nursing permissions (`nursing.view`, `nursing.record_vitals`, `nursing.record_notes`, and `nursing.manage_tasks`). It has no generic patient-history/update, appointment mutation, consultation mutation, prescription, billing, pharmacy, laboratory, radiology, insurance, ambulance, staff, settings, or administrative permissions. Exact API role checks and the frontend route whitelist block cross-role and removed Nurse URLs.
+
+### Pharmacist portal
+
+- `/pharmacist/home`: pending/ready prescriptions, low/out-of-stock medicine, today's dispensing, and pharmacy alerts
+- `/pharmacist/prescriptions`: searchable, filterable prescription review queue
+- `/pharmacist/prescriptions/[id]`: read-only patient/doctor/prescription detail with verify, reject-with-reason, and mark-for-dispensing actions
+- `/pharmacist/inventory`: medicine SKU/category/supplier setup, batch creation, computed stock status, and audited stock adjustments
+- `/pharmacist/dispensing`: ready-prescription stock selection and recent dispensing audit
+
+The sidebar contains only Dashboard, Prescriptions, Dispensing, and Inventory. No diagnosis, prescription creation, consultation, patient registration, scheduling, hospital payment, accounting, insurance, lab, radiology, ambulance, or Admin pages are present. Exact live-role layout validation, middleware whitelisting, and exact-role API dependencies protect direct URLs.
+
+### Lab Technician portal
+
+- `/lab/home`: pending, collected, processing, completed, urgent, and daily workload metrics
+- `/lab/orders`: searchable authorized order queue with patient, doctor, tests, priority, state, and order time
+- `/lab/orders/[id]`: accept, collect sample, start processing, enter a draft result, and complete/finalize through guarded actions
+- `/lab/results`: edit own draft results and review immutable finalized records
+
+The sidebar contains only Dashboard, Lab Orders, and Results. Former `/lab/samples` and `/lab/reports` pages are removed and middleware whitelisting blocks them plus every non-laboratory workflow.
+
 ### Other enterprise portals
 
-- `/manager`: home, staff, departments, doctors, appointments, reports, and analytics
-- `/nurse`: home, assigned patients and patient detail, vitals, notes, and tasks
-- `/pharmacy`: home, prescriptions, medicines, inventory, alerts, dispensing, purchases, and suppliers
-- `/lab`: home, orders, samples, results, and reports
 - `/radiology`: home, orders, studies, and reports
 - `/accountant`: home, billing, transactions, expenses, refunds, daily closing, and reports
 - `/insurance`: home, providers, policies, claims, documents, and payments
 - `/ambulance`: home, requests, trips, and vehicle
 
-These layouts validate the live role and effective permission set. Most pages read live API data through the shared enterprise resource renderer; several non-Super-Admin create/update workflows still require direct API use.
+These layouts validate the live role and effective permission set. Several remaining enterprise pages read live API data through the shared enterprise resource renderer; several non-Super-Admin create/update workflows still require direct API use.
 
 ## 10. Data model
 
@@ -507,8 +596,8 @@ Central identity record.
 ### `employee_permissions`
 
 - References an employee
-- Stores five permission flags as integer columns used as booleans
-- There is no database uniqueness constraint on `employee_id`, although application code assumes one permission row per employee
+- Stores four focused permission flags as integer columns used as booleans: registration, scheduling, check-in, and payment collection
+- `employee_id` is unique, so each receptionist employee has at most one permission row
 
 ### `appointments`
 
@@ -689,7 +778,7 @@ These are current implementation facts, not completed features:
 
 ### Data integrity and business rules
 
-- `database/schema.sql` is a legacy reference only and is no longer executed; the two-revision Alembic chain is authoritative.
+- `database/schema.sql` is a legacy reference only and is no longer executed; the three-revision Alembic chain is authoritative.
 - Core confirm/check-in/start/complete/cancel transitions are guarded, although a reusable state-machine abstraction is still absent.
 - Doctor slot conflicts are rejected for non-cancelled appointments.
 - Payment method is validated and repeat collection is idempotent for the original method.
@@ -697,21 +786,19 @@ These are current implementation facts, not completed features:
 - Consultation prices come from each doctor's configured `consultation_fee`; the legacy receipt line-item split remains presentation-only.
 - Deleting or changing referenced records lacks an explicit retention/cascade policy.
 - Receipt-oriented `hospital_settings` can be read/created but have no update endpoint or Admin settings page. This is separate from the editable Super Admin `system_settings` key/value store.
-- `can_view_reports` exists but has no matching receptionist report route/UI.
 
 ### Frontend and user experience
 
-- Enterprise dashboard shells validate the live backend role and permission list before rendering. Super Admin and Admin route groups require their exact live roles.
+- Enterprise dashboard shells validate the live backend role and permission list before rendering. Super Admin, Admin, and Hospital Manager route groups require their exact live roles.
 - Several older frontend values still use `any`, weakening the benefit of strict TypeScript.
 - Most errors are reduced to generic messages, and some page-level data requests throw without a local error boundary.
-- Polling every five seconds can create unnecessary load as usage grows.
-- Some checked-in screens show a “waiting for doctor” state, but there is no explicit start-consultation status mutation.
+- Some older screens still poll every five seconds. Doctor workload pages poll every 30 seconds and pause while the tab is hidden.
 - Generated/scaffolding scripts remain mixed with maintained application code.
 - Some source text shows mojibake for currency/symbol characters (for example `â‚¹`), indicating encoding cleanup is needed.
 
 ### Quality and operations
 
-- Backend tests cover all role authentication, permission isolation, disabled sessions, role audit, migration preservation/refusal, slot conflicts, consultation billing idempotency, and nursing assignment scope. Full browser end-to-end coverage is still needed.
+- Backend tests cover all role authentication, permission isolation, disabled sessions, role audit, migration preservation/refusal, Manager read-only operational scope and exact-role denial, Doctor appointment/patient assignment scope, consultation transitions and billing idempotency, slot conflicts, the exact-role/assignment-scoped Nurse workflow, and Pharmacist prescription/stock/dispensing safety. Full browser end-to-end coverage is still needed.
 - No CI workflow is present.
 - Dependencies are mostly unpinned in `requirements.txt`; frontend also uses `lucide-react: latest`.
 - Explicit audit history and health/readiness endpoints are implemented. Production monitoring, backup automation, and a real outbound notification adapter remain outstanding.
@@ -746,8 +833,8 @@ At minimum, regression testing should cover:
 ## 18. Current verification status
 
 - The working tree is based on branch `main` at `a76521a`; the authorization-separation changes are not yet committed.
-- Backend: 63 tests pass. Coverage includes role login, public patient registration, exact Super Admin/Admin API denial, forced Admin creation, Super Admin-driven Admin password reset, self-promotion denial, deactivated sessions, legacy receptionist permissions, enterprise workflows, audit sanitization, and migration preservation/refusal.
-- Frontend: 3 role-routing authorization tests pass; TypeScript and Next.js ESLint pass; the optimized production build succeeds and generates 87 routes, including `/super-admin/admins/[id]`.
-- No database model or Alembic change was required. The last recorded database verification remains `20260826_0002 (head)` with no pending model operations.
-- Docker Compose was not started during this change. It still requires non-empty `MYSQL_ROOT_PASSWORD`, `MYSQL_PASSWORD`, and `SECRET_KEY` values in the untracked root `.env`; secret values were not inspected.
+- Backend: 95 tests pass. Coverage includes role login, exact cross-role denial, Manager/Nurse/Doctor/Pharmacist workflows, assignment-private Lab orders, guarded sample/processing transitions, draft result entry/update, finalized-result immutability, audit sanitization, and migration preservation/refusal.
+- Frontend: 9 role-routing authorization tests and strict TypeScript checks pass; the optimized production build succeeds and contains only the four final Lab Technician routes alongside the previously finalized role portals.
+- Alembic revision `20260831_0005` adds Lab order assignment/instructions/priority, reconciles order/item states, and introduces numeric values plus explicit draft/finalized result integrity. Fresh and legacy-data-preserving migration tests pass, and the live MySQL database is verified at `20260831_0005 (head)`.
+- Doctor and Hospital Manager cleanup require no database migration or default/demo business data. Docker Compose backend, worker, frontend, MySQL, and Redis services were rebuilt/started and verified healthy. Secret values were not printed or modified.
 - `npm ci` reports 8 dependency vulnerabilities (7 high, 1 critical), including a warning that pinned Next.js `14.2.5` should be upgraded to a patched release. Dependency upgrades remain a separate compatibility/security task.

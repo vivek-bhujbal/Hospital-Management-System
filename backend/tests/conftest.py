@@ -18,7 +18,7 @@ from app.database import Base, get_db
 from app.models.all_models import Employee, EmployeePermission, User
 from app.routers import (
     accountant, admin, ambulance, appointments, auth, billing, doctors, employees, insurance,
-    lab, manager, nurse, pharmacy, prescriptions, radiology, rbac, super_admin,
+    lab, manager, nurse, patients, pharmacy, prescriptions, radiology, rbac, super_admin,
 )
 
 
@@ -41,6 +41,7 @@ def override_get_db():
 test_app = FastAPI()
 test_app.dependency_overrides[get_db] = override_get_db
 test_app.include_router(auth.router, prefix="/auth")
+test_app.include_router(patients.router, prefix="/patients")
 test_app.include_router(admin.router, prefix="/admin")
 test_app.include_router(employees.router, prefix="/admin/employees")
 test_app.include_router(rbac.router, prefix="/rbac")
@@ -152,7 +153,6 @@ def create_user(db: Session) -> Callable[..., User]:
                 can_schedule_appointment=int(values.get("can_schedule_appointment", True)),
                 can_checkin_patient=int(values.get("can_checkin_patient", True)),
                 can_collect_billing=int(values.get("can_collect_billing", True)),
-                can_view_reports=int(values.get("can_view_reports", False)),
             ))
 
         db.commit()

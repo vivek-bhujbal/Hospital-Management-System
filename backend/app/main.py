@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from sqlalchemy import text
-from app.routers import auth, patients, doctors, receptionists, appointments, prescriptions, billing, admin, employees, rbac, super_admin, manager, nurse, pharmacy, lab, radiology, accountant, insurance, ambulance
+from app.routers import auth, patients, doctors, appointments, prescriptions, billing, admin, employees, rbac, super_admin, manager, nurse, pharmacy, lab, radiology, accountant, insurance, ambulance
 from app.routers import realtime
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
@@ -19,7 +19,6 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(patients.router, prefix="/patients", tags=["patients"])
 app.include_router(doctors.router, prefix="/doctors", tags=["doctors"])
-app.include_router(receptionists.router, prefix="/receptionists", tags=["receptionists"])
 app.include_router(appointments.router, prefix="/appointments", tags=["appointments"])
 app.include_router(prescriptions.router, prefix="/prescriptions", tags=["prescriptions"])
 app.include_router(billing.router, prefix="/billing", tags=["billing"])

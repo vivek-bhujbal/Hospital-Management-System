@@ -1,5 +1,9 @@
-import EnterpriseResourcePage from '@/components/EnterpriseResourcePage'
+import { fetchAPI } from '@/lib/api'
+import type { NurseTask } from '@/lib/nurseTypes'
 
-export default function NurseTasks() {
-  return <EnterpriseResourcePage title="My nursing tasks" endpoint="/nurse/tasks" />
+import TaskBoard from './TaskBoard'
+
+export default async function NurseTasks() {
+  const tasks = await fetchAPI('/nurse/tasks') as NurseTask[]
+  return <TaskBoard tasks={tasks} />
 }

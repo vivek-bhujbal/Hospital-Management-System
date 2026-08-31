@@ -1,19 +1,24 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.all_models import (
     Appointment, Doctor, User, PatientVital, LabOrder, LabOrderItem, LabResult,
-    RadiologyOrder, RadiologyReport, RadiologyStudy,
+    RadiologyOrder, RadiologyReport, RadiologyStudy, NursingTask, Patient,
 )
-from app.schemas.all_schemas import DoctorResponse, DoctorCreate, LabResultResponse, RadiologyReportResponse
+from app.schemas.all_schemas import (
+    DoctorResponse, DoctorSelfUpdate, LabResultResponse, NursingTaskCreate,
+    NursingTaskResponse, RadiologyReportResponse,
+)
 from typing import List
-from app.core.deps import require_permission
+from app.core.deps import require_permission, require_role
 from app.core.permissions import Permission
+from app.core.roles import UserRole
+from app.services.audit_service import record_audit_event, request_audit_metadata
 
 router = APIRouter()
 allow_doctor_view = require_permission(Permission.doctors_view)
-allow_doctor_update_self = require_permission(Permission.doctors_update_self)
-allow_doctor_clinical = require_permission(Permission.prescriptions_create) # Generally doctors have this
+allow_doctor_self = require_role("doctor")
+allow_doctor_clinical = require_role("doctor")
 
 
 def _require_assigned_patient(db: Session, current_user: User, patient_id: int) -> Doctor:
@@ -29,14 +34,14 @@ def _require_assigned_patient(db: Session, current_user: User, patient_id: int) 
     return doctor
 
 @router.get("/me", response_model=DoctorResponse)
-def get_doctor_profile(db: Session = Depends(get_db), current_user: User = Depends(allow_doctor_update_self)):
+def get_doctor_profile(db: Session = Depends(get_db), current_user: User = Depends(allow_doctor_self)):
     doctor = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
     if not doctor:
         raise HTTPException(status_code=404, detail="Doctor profile not found")
     return doctor
 
 @router.put("/me", response_model=DoctorResponse)
-def update_doctor_profile(profile_data: DoctorCreate, db: Session = Depends(get_db), current_user: User = Depends(allow_doctor_update_self)):
+def update_doctor_profile(profile_data: DoctorSelfUpdate, db: Session = Depends(get_db), current_user: User = Depends(allow_doctor_self)):
     doctor = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
     if not doctor:
         raise HTTPException(status_code=404, detail="Doctor profile not found")
@@ -72,7 +77,7 @@ def get_patient_lab_results(patient_id: int, db: Session = Depends(get_db), curr
         LabOrder, LabOrderItem.order_id == LabOrder.id
     ).filter(
         LabOrder.patient_id == patient_id,
-        LabResult.status == "verified",
+        LabResult.status == "finalized",
     ).order_by(LabResult.created_at.desc()).all()
 
 @router.get("/patients/{patient_id}/radiology-reports", response_model=List[RadiologyReportResponse])
@@ -86,3 +91,34 @@ def get_patient_radiology_reports(patient_id: int, db: Session = Depends(get_db)
         RadiologyOrder.patient_id == patient_id,
         RadiologyReport.status == "verified",
     ).order_by(RadiologyReport.created_at.desc()).all()
+
+
+@router.post("/nursing-tasks", response_model=NursingTaskResponse, status_code=201)
+def assign_nursing_task(
+    task: NursingTaskCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(allow_doctor_clinical),
+):
+    _require_assigned_patient(db, current_user, task.patient_id)
+    patient = db.get(Patient, task.patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    nurse = db.query(User).filter(
+        User.id == task.assigned_nurse_id,
+        User.role == UserRole.nurse.value,
+        User.is_active.is_(True),
+    ).first()
+    if not nurse:
+        raise HTTPException(status_code=400, detail="Assigned nurse is invalid or inactive")
+    item = NursingTask(**task.model_dump(exclude={"status"}), status="pending")
+    db.add(item)
+    db.flush()
+    record_audit_event(
+        db, actor=current_user, action="nursing_task.assigned",
+        resource_type="nursing_task", resource_id=str(item.id),
+        new_values=task.model_dump(), **request_audit_metadata(request),
+    )
+    db.commit()
+    db.refresh(item)
+    return item

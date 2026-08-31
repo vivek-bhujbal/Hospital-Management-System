@@ -49,6 +49,60 @@ def test_only_super_admin_can_create_admin_and_creation_is_audited(
     assert payload["email"] in [item["email"] for item in listed.json()]
 
 
+def test_only_admin_can_provision_and_deactivate_hospital_manager(
+    client, db, create_user, login
+):
+    super_admin = create_user("super_admin")
+    admin = create_user("admin")
+    payload = account_payload("hospital_manager", "operations-manager")
+
+    denied = client.post(
+        "/admin/staff",
+        json=payload,
+        headers=headers(login(super_admin)),
+    )
+    created = client.post(
+        "/admin/staff",
+        json=payload,
+        headers=headers(login(admin)),
+    )
+
+    assert denied.status_code == 403
+    assert created.status_code == 201
+    assert created.json()["role"] == "hospital_manager"
+    manager = db.query(User).filter_by(email=payload["email"]).one()
+    assert manager.is_active is True
+    assert db.query(AuditLog).filter_by(action="staff.account_created").count() == 1
+
+    listed = client.get(
+        "/admin/staff",
+        headers=headers(login(admin)),
+    )
+    assert listed.status_code == 200
+    assert manager.id in [item["id"] for item in listed.json()]
+
+    deactivated = client.put(
+        f"/admin/hospital-managers/{manager.id}/deactivate",
+        headers=headers(login(admin)),
+    )
+    assert deactivated.status_code == 200
+    db.refresh(manager)
+    assert manager.is_active is False
+    assert client.post(
+        "/auth/login",
+        json={"email": payload["email"], "password": payload["password"]},
+    ).status_code == 403
+    assert db.query(AuditLog).filter_by(action="hospital_manager.deactivated").count() == 1
+
+    reactivated = client.put(
+        f"/admin/hospital-managers/{manager.id}/activate",
+        headers=headers(login(admin)),
+    )
+    assert reactivated.status_code == 200
+    db.refresh(manager)
+    assert manager.is_active is True
+
+
 def test_only_admin_can_create_operational_accounts(
     client, db, create_user, login
 ):
@@ -56,12 +110,12 @@ def test_only_admin_can_create_operational_accounts(
     super_admin = create_user("super_admin")
 
     nurse_response = client.post(
-        "/manager/staff",
+        "/admin/staff",
         json=account_payload("nurse", "nurse"),
         headers=headers(login(admin)),
     )
     denied_super_admin = client.post(
-        "/manager/staff",
+        "/admin/staff",
         json=account_payload("pharmacist", "pharmacist"),
         headers=headers(login(super_admin)),
     )
@@ -79,16 +133,15 @@ def test_hospital_manager_cannot_create_staff_and_admin_role_is_rejected(
     admin = create_user("admin")
 
     denied = client.post(
-        "/manager/staff",
+        "/admin/staff",
         json=account_payload("nurse", "denied"),
         headers=headers(login(manager)),
     )
     invalid_role = client.post(
-        "/manager/staff",
+        "/admin/staff",
         json=account_payload("admin", "invalid-admin"),
         headers=headers(login(admin)),
     )
-
     assert denied.status_code == 403
     assert invalid_role.status_code == 422
 
@@ -111,10 +164,10 @@ def test_doctor_and_receptionist_profiles_are_created_transactionally(
     }
 
     doctor_response = client.post(
-        "/manager/staff", json=doctor_payload, headers=headers(login(admin))
+        "/admin/staff", json=doctor_payload, headers=headers(login(admin))
     )
     receptionist_response = client.post(
-        "/manager/staff", json=receptionist_payload, headers=headers(login(admin))
+        "/admin/staff", json=receptionist_payload, headers=headers(login(admin))
     )
 
     assert doctor_response.status_code == 201
@@ -130,7 +183,6 @@ def test_doctor_and_receptionist_profiles_are_created_transactionally(
     assert permissions.can_schedule_appointment == 0
     assert permissions.can_checkin_patient == 0
     assert permissions.can_collect_billing == 0
-    assert permissions.can_view_reports == 0
 
 
 def test_staff_email_must_be_unique(client, create_user, login):
@@ -138,5 +190,52 @@ def test_staff_email_must_be_unique(client, create_user, login):
     payload = account_payload("nurse", "duplicate")
     auth = headers(login(admin))
 
-    assert client.post("/manager/staff", json=payload, headers=auth).status_code == 201
-    assert client.post("/manager/staff", json=payload, headers=auth).status_code == 409
+    assert client.post("/admin/staff", json=payload, headers=auth).status_code == 201
+    assert client.post("/admin/staff", json=payload, headers=auth).status_code == 409
+
+
+def test_inactivating_receptionist_blocks_login_and_revokes_session(
+    client, db, create_user, login
+):
+    admin = create_user("admin")
+    receptionist = create_user("receptionist")
+    receptionist_token = login(receptionist)
+    employee = db.query(Employee).filter_by(user_id=receptionist.id).one()
+
+    response = client.patch(
+        f"/admin/employees/{employee.id}",
+        json={"status": "inactive"},
+        headers=headers(login(admin)),
+    )
+
+    assert response.status_code == 200
+    db.refresh(receptionist)
+    db.refresh(employee)
+    assert employee.status == "inactive"
+    assert receptionist.is_active is False
+    assert client.post(
+        "/auth/login",
+        json={"email": receptionist.email, "password": "Strong1!Password"},
+    ).status_code == 403
+    assert client.get(
+        "/auth/me", headers=headers(receptionist_token)
+    ).status_code == 403
+
+
+def test_inactive_receptionist_profile_is_authoritative_on_data_mismatch(
+    client, db, create_user, login
+):
+    receptionist = create_user("receptionist")
+    receptionist_token = login(receptionist)
+    employee = db.query(Employee).filter_by(user_id=receptionist.id).one()
+    employee.status = "inactive"
+    db.commit()
+
+    assert receptionist.is_active is True
+    assert client.post(
+        "/auth/login",
+        json={"email": receptionist.email, "password": "Strong1!Password"},
+    ).status_code == 403
+    assert client.get(
+        "/auth/me", headers=headers(receptionist_token)
+    ).status_code == 403

@@ -39,6 +39,9 @@ def test_only_super_admin_can_modify_roles_and_change_is_audited(
     assert event.new_values == {"role": "nurse"}
     assert client.get(
         "/probes/patient-history", headers=headers(target_token)
+    ).status_code == 403
+    assert client.get(
+        "/probes/clinical-role", headers=headers(target_token)
     ).status_code == 200
 
 
@@ -54,7 +57,6 @@ def test_receptionist_permission_change_is_audited(client, db, create_user, logi
             "can_schedule_appointment": True,
             "can_checkin_patient": False,
             "can_collect_billing": True,
-            "can_view_reports": False,
         },
         headers=headers(login(admin)),
     )

@@ -92,7 +92,6 @@ def create_employee(
             can_schedule_appointment=1,
             can_checkin_patient=1,
             can_collect_billing=1,
-            can_view_reports=0,
         )
         db.add(default_permissions)
         record_audit_event(

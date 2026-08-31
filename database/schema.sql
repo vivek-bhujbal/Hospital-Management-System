@@ -55,7 +55,6 @@ CREATE TABLE employee_permissions (
   can_schedule_appointment TINYINT(1) DEFAULT 1,
   can_checkin_patient TINYINT(1) DEFAULT 1,
   can_collect_billing TINYINT(1) DEFAULT 1,
-  can_view_reports TINYINT(1) DEFAULT 0,
   FOREIGN KEY (employee_id) REFERENCES employees(id)
 );
 
@@ -240,11 +239,14 @@ CREATE TABLE supplier (
 CREATE TABLE medicine (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(150) NOT NULL,
+  sku VARCHAR(100) UNIQUE,
   generic_name VARCHAR(150),
   category_id INT NOT NULL,
   unit VARCHAR(50),
   description TEXT,
+  status ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (category_id) REFERENCES medicine_category(id)
 );
 
@@ -276,6 +278,7 @@ CREATE TABLE purchase_item (
 CREATE TABLE medicine_batch (
   id INT AUTO_INCREMENT PRIMARY KEY,
   medicine_id INT NOT NULL,
+  supplier_id INT,
   batch_number VARCHAR(100) NOT NULL,
   expiry_date DATE NOT NULL,
   purchase_price DECIMAL(10,2) NOT NULL,
@@ -283,7 +286,12 @@ CREATE TABLE medicine_batch (
   quantity INT NOT NULL,
   available_quantity INT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (medicine_id) REFERENCES medicine(id)
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_medicine_batch_number (medicine_id, batch_number),
+  FOREIGN KEY (medicine_id) REFERENCES medicine(id),
+  FOREIGN KEY (supplier_id) REFERENCES supplier(id),
+  CHECK (quantity >= 0),
+  CHECK (available_quantity >= 0 AND available_quantity <= quantity)
 );
 
 CREATE TABLE stock_transaction (
@@ -292,6 +300,7 @@ CREATE TABLE stock_transaction (
   batch_id INT NOT NULL,
   transaction_type ENUM('purchase', 'dispense', 'adjustment', 'return') NOT NULL,
   quantity INT NOT NULL,
+  reason VARCHAR(255),
   reference_id INT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   created_by INT NOT NULL,
@@ -305,8 +314,11 @@ CREATE TABLE dispensing (
   prescription_id INT NOT NULL,
   patient_id INT NOT NULL,
   total_amount DECIMAL(10,2) NOT NULL,
+  status ENUM('completed', 'voided') NOT NULL DEFAULT 'completed',
   dispensed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   dispensed_by INT NOT NULL,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_dispensing_prescription (prescription_id),
   FOREIGN KEY (prescription_id) REFERENCES prescriptions(id),
   FOREIGN KEY (patient_id) REFERENCES patients(id),
   FOREIGN KEY (dispensed_by) REFERENCES users(id)
@@ -323,6 +335,23 @@ CREATE TABLE dispensing_item (
   FOREIGN KEY (dispensing_id) REFERENCES dispensing(id),
   FOREIGN KEY (medicine_id) REFERENCES medicine(id),
   FOREIGN KEY (batch_id) REFERENCES medicine_batch(id)
+);
+
+CREATE TABLE pharmacy_prescription_reviews (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  prescription_id INT NOT NULL,
+  status ENUM('verified', 'rejected', 'ready_for_dispensing', 'dispensed') NOT NULL,
+  rejection_reason TEXT,
+  verified_by INT,
+  verified_at TIMESTAMP NULL,
+  updated_by INT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_pharmacy_review_prescription (prescription_id),
+  INDEX ix_pharmacy_review_status_updated (status, updated_at),
+  FOREIGN KEY (prescription_id) REFERENCES prescriptions(id),
+  FOREIGN KEY (verified_by) REFERENCES users(id),
+  FOREIGN KEY (updated_by) REFERENCES users(id)
 );
 
 -- Laboratory Tables
@@ -348,18 +377,26 @@ CREATE TABLE lab_orders (
   patient_id INT NOT NULL,
   doctor_id INT NOT NULL,
   appointment_id INT NULL,
+  assigned_technician_id INT NULL,
+  instructions TEXT,
+  priority ENUM('routine', 'urgent', 'stat') NOT NULL DEFAULT 'routine',
+  accepted_at TIMESTAMP NULL,
   ordered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  status ENUM('pending', 'in_progress', 'completed', 'cancelled') DEFAULT 'pending',
+  status ENUM('ordered', 'sample_collected', 'processing', 'completed', 'cancelled') DEFAULT 'ordered',
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX ix_lab_orders_assignee_status (assigned_technician_id, status),
   FOREIGN KEY (patient_id) REFERENCES patients(id),
   FOREIGN KEY (doctor_id) REFERENCES users(id),
-  FOREIGN KEY (appointment_id) REFERENCES appointments(id)
+  FOREIGN KEY (appointment_id) REFERENCES appointments(id),
+  FOREIGN KEY (assigned_technician_id) REFERENCES users(id)
 );
 
 CREATE TABLE lab_order_items (
   id INT AUTO_INCREMENT PRIMARY KEY,
   order_id INT NOT NULL,
   test_id INT NOT NULL,
-  status ENUM('ordered', 'sample_collected', 'processing', 'completed', 'verified', 'cancelled') DEFAULT 'ordered',
+  status ENUM('ordered', 'sample_collected', 'processing', 'completed', 'cancelled') DEFAULT 'ordered',
+  UNIQUE KEY uq_lab_order_test (order_id, test_id),
   FOREIGN KEY (order_id) REFERENCES lab_orders(id),
   FOREIGN KEY (test_id) REFERENCES lab_tests(id)
 );
@@ -381,15 +418,17 @@ CREATE TABLE lab_results (
   order_item_id INT NOT NULL,
   technician_id INT NOT NULL,
   result_value TEXT,
+  numeric_value DECIMAL(18,6),
   unit VARCHAR(50),
   reference_range VARCHAR(100),
   remarks TEXT,
-  status ENUM('completed', 'verified') DEFAULT 'completed',
-  verified_by INT NULL,
-  verified_at TIMESTAMP NULL,
+  status ENUM('draft', 'finalized') DEFAULT 'draft',
+  finalized_at TIMESTAMP NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_lab_result_order_item (order_item_id),
   FOREIGN KEY (order_item_id) REFERENCES lab_order_items(id),
-  FOREIGN KEY (technician_id) REFERENCES users(id),
-  FOREIGN KEY (verified_by) REFERENCES users(id)
+  FOREIGN KEY (technician_id) REFERENCES users(id)
 );
 
 CREATE TABLE lab_result_attachments (

@@ -2,6 +2,7 @@ import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { ShieldAlert } from 'lucide-react'
 import AddEmployeeModal from './AddEmployeeModal'
+import EmployeeStatusSelect from './EmployeeStatusSelect'
 import { updateEmployeeAction } from '@/app/actions/admin'
 
 interface EmployeeSummary {
@@ -71,7 +72,7 @@ export default async function EmployeesPage() {
                   </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <select form={`employee-${emp.id}`} name="status" defaultValue={emp.status} className="rounded border bg-white p-2"><option value="active">Active</option><option value="inactive">Inactive</option></select>
+                  <EmployeeStatusSelect employeeId={emp.id} status={emp.status} />
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                   <div className="flex items-center justify-end gap-3">

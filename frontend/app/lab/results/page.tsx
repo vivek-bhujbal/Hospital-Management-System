@@ -1,5 +1,8 @@
-import EnterpriseResourcePage from '@/components/EnterpriseResourcePage'
+import { fetchAPI } from '@/lib/api'
+import type { LabResult } from '@/lib/labTypes'
+import LabResultsWorkspace from './LabResultsWorkspace'
 
-export default function LabResults() {
-  return <EnterpriseResourcePage title="Lab results" endpoint="/lab/results" />
+export default async function LabResultsPage() {
+  const results = await fetchAPI('/lab/results') as LabResult[]
+  return <LabResultsWorkspace results={results}/>
 }

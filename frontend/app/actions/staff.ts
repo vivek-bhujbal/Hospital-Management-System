@@ -63,7 +63,7 @@ export async function createAdminAccountAction(
 export async function createStaffAccountAction(
   formData: FormData,
 ): Promise<StaffActionResult> {
-  const response = await fetch(`${API_URL}/manager/staff`, {
+  const response = await fetch(`${API_URL}/admin/staff`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify({
@@ -87,6 +87,23 @@ export async function createStaffAccountAction(
     return { error: await errorDetail(response, 'Failed to create staff account') }
   }
   revalidatePath('/admin/staff')
-  revalidatePath('/manager/staff')
+  return { success: true }
+}
+
+export async function setHospitalManagerActiveAction(
+  formData: FormData,
+): Promise<StaffActionResult> {
+  const id = optionalString(formData, 'id')
+  const shouldActivate = formData.get('is_active') === 'true'
+  const action = shouldActivate ? 'activate' : 'deactivate'
+  const response = await fetch(`${API_URL}/admin/hospital-managers/${id}/${action}`, {
+    method: 'PUT',
+    headers: headers(),
+  })
+  if (response.status === 401) redirect('/login')
+  if (!response.ok) {
+    return { error: await errorDetail(response, `Failed to ${action} Hospital Manager`) }
+  }
+  revalidatePath('/admin/staff')
   return { success: true }
 }

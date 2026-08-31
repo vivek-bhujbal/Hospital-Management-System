@@ -9,14 +9,14 @@ const ROLE_GROUPS = [
     title: 'Hospital administration',
     roles: [
       ['Admin', 'Runs hospital operations: doctors, receptionist employees, patients, appointments, and billing.'],
-      ['Hospital Manager', 'Coordinates departments, staff reporting, analytics, and cross-department operations.'],
+      ['Hospital Manager', 'Read-only hospital operations role provisioned by Admin; monitors appointments, patients, doctors, staff, departments, and reports.'],
     ],
   },
   {
     title: 'Clinical and operational roles',
     roles: [
       ['Doctor', 'Consultations, assigned patients, prescriptions, laboratory orders, and radiology orders.'],
-      ['Receptionist', 'Permission-scoped patient registration, scheduling, check-in, billing, and reports.'],
+      ['Receptionist', 'Permission-scoped patient registration, scheduling, check-in, and payment collection.'],
       ['Nurse', 'Assignment-scoped patient care, vitals, notes, and nursing tasks.'],
       ['Pharmacist', 'Medicine inventory, purchasing, dispensing, and pharmacy alerts.'],
       ['Lab Technician', 'Laboratory samples, results, verification, and reports.'],
@@ -34,10 +34,10 @@ export default function SuperAdminRoles() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Role hierarchy</h1>
-        <p className="mt-1 text-gray-600">Super Admin manages Admin accounts; Admin manages hospital operations. This view does not change user roles.</p>
+        <p className="mt-1 text-gray-600">Super Admin manages Admin accounts; Admin provisions Hospital Managers and manages hospital staff. This view does not change user roles.</p>
       </div>
       <div className="rounded-xl border border-blue-200 bg-blue-50 p-5 text-blue-900">
-        <span className="font-semibold">Super Admin</span> <span aria-hidden>→</span> creates and manages <span className="font-semibold">Admin</span> <span aria-hidden>→</span> manages hospital staff and operations
+        <span className="font-semibold">Super Admin</span> <span aria-hidden>→</span> creates and manages <span className="font-semibold">Admin</span> <span aria-hidden>→</span> provisions <span className="font-semibold">Hospital Manager</span> and other hospital staff
       </div>
       {ROLE_GROUPS.map((group) => (
         <section key={group.title} className="rounded-xl border bg-white p-6 shadow-sm">

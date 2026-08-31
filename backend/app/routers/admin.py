@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database import get_db
-from app.models.all_models import Doctor, Patient, Appointment, Billing, User, HospitalSetting
-from app.schemas.all_schemas import DoctorResponse, DoctorCreate, PatientResponse, AppointmentResponse, HospitalSettingResponse, DoctorCreateWithAuth, DoctorPasswordReset
+from app.models.all_models import Doctor, Patient, Appointment, Billing, User, HospitalSetting, Employee, EmployeePermission
+from app.schemas.all_schemas import DoctorResponse, DoctorCreate, PatientResponse, AppointmentResponse, HospitalSettingResponse, DoctorCreateWithAuth, DoctorPasswordReset, StaffAccountCreate, StaffAccountResponse
 from typing import List
-from datetime import date
+from datetime import date, datetime, timezone
 from app.core.deps import require_permission, require_role
 from app.core.permissions import Permission
 from app.core.roles import UserRole
@@ -20,6 +20,39 @@ allow_patients_view = require_permission(Permission.patients_view)
 allow_appointments_view = require_permission(Permission.appointments_view)
 allow_billing_report = require_permission(Permission.billing_report)
 allow_settings_view = require_permission(Permission.settings_view)
+allow_staff_view = require_permission(Permission.staff_view)
+allow_staff_create = require_permission(Permission.staff_create)
+allow_staff_deactivate = require_permission(Permission.staff_deactivate)
+
+STAFF_ACCOUNT_ROLES = (
+    UserRole.hospital_manager.value,
+    UserRole.doctor.value,
+    UserRole.receptionist.value,
+    UserRole.nurse.value,
+    UserRole.pharmacist.value,
+    UserRole.lab_technician.value,
+    UserRole.radiologist.value,
+    UserRole.accountant.value,
+    UserRole.insurance_officer.value,
+    UserRole.ambulance_staff.value,
+)
+
+
+def _staff_response(db: Session, user: User) -> dict:
+    profile_id = None
+    if user.role == UserRole.doctor.value:
+        profile_id = db.query(Doctor.id).filter(Doctor.user_id == user.id).scalar()
+    elif user.role == UserRole.receptionist.value:
+        profile_id = db.query(Employee.id).filter(Employee.user_id == user.id).scalar()
+    return {
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "role": user.role,
+        "is_active": bool(user.is_active),
+        "profile_id": profile_id,
+        "created_at": user.created_at,
+    }
 
 @router.get("/overview")
 def get_overview(db: Session = Depends(get_db), current_user: User = Depends(allow_reports)):
@@ -51,6 +84,141 @@ def get_overview(db: Session = Depends(get_db), current_user: User = Depends(all
         "recent_appointments": recent_appointments,
         "recent_billing": recent_billing,
     }
+
+
+@router.get("/staff", response_model=List[StaffAccountResponse])
+def get_staff_accounts(
+    db: Session = Depends(get_db),
+    _: User = Depends(allow_staff_view),
+):
+    users = db.query(User).filter(User.role.in_(STAFF_ACCOUNT_ROLES)).order_by(User.name).all()
+    return [_staff_response(db, user) for user in users]
+
+
+@router.post("/staff", response_model=StaffAccountResponse, status_code=201)
+def create_staff_account(
+    staff_in: StaffAccountCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(allow_staff_create),
+):
+    normalized_email = str(staff_in.email).lower()
+    if db.query(User).filter(User.email == normalized_email).first():
+        raise HTTPException(status_code=409, detail="Email already registered")
+
+    try:
+        user = User(
+            name=staff_in.name,
+            email=normalized_email,
+            password_hash=get_password_hash(staff_in.password),
+            role=staff_in.role.value,
+            is_active=True,
+            is_email_verified=True,
+            email_verified_at=datetime.now(timezone.utc),
+        )
+        db.add(user)
+        db.flush()
+
+        profile_id = None
+        if staff_in.role == UserRole.doctor:
+            doctor = Doctor(
+                user_id=user.id,
+                name=user.name,
+                specialization=staff_in.specialization,
+                consultation_fee=staff_in.consultation_fee,
+                contact=staff_in.contact,
+                timing_start=staff_in.timing_start,
+                timing_end=staff_in.timing_end,
+                status="active",
+            )
+            db.add(doctor)
+            db.flush()
+            profile_id = doctor.id
+        elif staff_in.role == UserRole.receptionist:
+            employee = Employee(
+                user_id=user.id,
+                designation=staff_in.designation,
+                joining_date=staff_in.joining_date,
+                shift_start=staff_in.shift_start,
+                shift_end=staff_in.shift_end,
+                status="active",
+                added_by=current_user.id,
+            )
+            db.add(employee)
+            db.flush()
+            db.add(EmployeePermission(
+                employee_id=employee.id,
+                can_register_patient=0,
+                can_schedule_appointment=0,
+                can_checkin_patient=0,
+                can_collect_billing=0,
+            ))
+            profile_id = employee.id
+
+        record_audit_event(
+            db,
+            actor=current_user,
+            action="staff.account_created",
+            resource_type="user",
+            resource_id=str(user.id),
+            new_values={"email": user.email, "role": user.role, "profile_id": profile_id},
+            **request_audit_metadata(request),
+        )
+        db.commit()
+        db.refresh(user)
+    except Exception:
+        db.rollback()
+        raise
+
+    return _staff_response(db, user)
+
+
+def _set_hospital_manager_active(
+    manager_id: int, active: bool, request: Request, db: Session, current_user: User,
+):
+    manager = db.query(User).filter(
+        User.id == manager_id,
+        User.role == UserRole.hospital_manager.value,
+    ).first()
+    if not manager:
+        raise HTTPException(status_code=404, detail="Hospital Manager not found")
+    if manager.is_active == active:
+        return {"status": "active" if active else "deactivated"}
+
+    previous_status = bool(manager.is_active)
+    manager.is_active = active
+    record_audit_event(
+        db,
+        actor=current_user,
+        action="hospital_manager.activated" if active else "hospital_manager.deactivated",
+        resource_type="user",
+        resource_id=str(manager.id),
+        old_values={"is_active": previous_status},
+        new_values={"is_active": active},
+        **request_audit_metadata(request),
+    )
+    db.commit()
+    return {"status": "active" if active else "deactivated"}
+
+
+@router.put("/hospital-managers/{manager_id}/deactivate")
+def deactivate_hospital_manager(
+    manager_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(allow_staff_deactivate),
+):
+    return _set_hospital_manager_active(manager_id, False, request, db, current_user)
+
+
+@router.put("/hospital-managers/{manager_id}/activate")
+def activate_hospital_manager(
+    manager_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(allow_staff_deactivate),
+):
+    return _set_hospital_manager_active(manager_id, True, request, db, current_user)
 
 @router.get("/doctors", response_model=List[DoctorResponse])
 def admin_get_doctors(db: Session = Depends(get_db), current_user: User = Depends(allow_doctors_view)):

@@ -6,7 +6,7 @@ from app.models.all_models import Appointment, Patient, User, Doctor
 from app.schemas.all_schemas import AppointmentResponse, AppointmentCreate
 from typing import List, Optional
 from datetime import date, datetime, timezone
-from app.core.deps import get_current_user, require_permission
+from app.core.deps import get_current_user, require_permission, require_role
 from app.core.permissions import Permission
 from app.services.audit_service import record_audit_event, request_audit_metadata
 from app.services.authorization import user_has_permission
@@ -36,6 +36,11 @@ def book_appointment(
         raise HTTPException(status_code=400, detail="Doctor is unavailable")
     if appt_in.appt_date < date.today():
         raise HTTPException(status_code=400, detail="Appointment date cannot be in the past")
+    if (
+        appt_in.appt_date == date.today()
+        and appt_in.appt_time <= datetime.now().time().replace(microsecond=0)
+    ):
+        raise HTTPException(status_code=400, detail="Appointment time cannot be in the past")
     if doctor.timing_start and appt_in.appt_time < doctor.timing_start:
         raise HTTPException(status_code=400, detail="Appointment is before the doctor's working hours")
     if doctor.timing_end and appt_in.appt_time >= doctor.timing_end:
@@ -48,6 +53,14 @@ def book_appointment(
     ).first()
     if collision:
         raise HTTPException(status_code=409, detail="Doctor already has an appointment in this time slot")
+    patient_collision = db.query(Appointment.id).filter(
+        Appointment.patient_id == patient.id,
+        Appointment.appt_date == appt_in.appt_date,
+        Appointment.appt_time == appt_in.appt_time,
+        Appointment.status != "cancelled",
+    ).first()
+    if patient_collision:
+        raise HTTPException(status_code=409, detail="Patient already has an appointment in this time slot")
     new_appt = Appointment(
         patient_id=appt_in.patient_id,
         doctor_id=appt_in.doctor_id,
@@ -80,17 +93,26 @@ def get_appointments(date: Optional[date] = None, doctor_id: Optional[str] = Non
     query = db.query(Appointment)
     if date:
         query = query.filter(Appointment.appt_date == date)
-        
-    if doctor_id:
-        if doctor_id.lower() == "me" and current_user.role == "doctor":
-            doc = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
-            if doc:
-                query = query.filter(Appointment.doctor_id == doc.id)
-        else:
+
+    if current_user.role == "doctor":
+        doctor = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
+        if not doctor:
+            raise HTTPException(status_code=404, detail="Doctor profile not found")
+        if doctor_id and doctor_id.lower() != "me":
             try:
-                query = query.filter(Appointment.doctor_id == int(doctor_id))
+                requested_doctor_id = int(doctor_id)
             except ValueError:
                 raise HTTPException(status_code=422, detail="doctor_id must be an integer or 'me'")
+            if requested_doctor_id != doctor.id:
+                raise HTTPException(status_code=403, detail="Cannot view another doctor's appointments")
+        query = query.filter(Appointment.doctor_id == doctor.id)
+    elif doctor_id:
+        if doctor_id.lower() == "me":
+            raise HTTPException(status_code=422, detail="doctor_id='me' is only valid for doctors")
+        try:
+            query = query.filter(Appointment.doctor_id == int(doctor_id))
+        except ValueError:
+            raise HTTPException(status_code=422, detail="doctor_id must be an integer or 'me'")
             
     return query.order_by(Appointment.appt_date.asc(), Appointment.appt_time.asc()).all()
 
@@ -164,7 +186,7 @@ def cancel_appointment(
 @router.patch("/{id}/start")
 def start_consultation(
     id: int, request: Request, db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(Permission.consultations_update)),
+    current_user: User = Depends(require_role("doctor")),
 ):
     appointment = db.query(Appointment).filter(Appointment.id == id).with_for_update().first()
     if not appointment:

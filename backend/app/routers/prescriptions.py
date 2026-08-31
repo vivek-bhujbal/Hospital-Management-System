@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.deps import require_permission
+from app.core.deps import require_permission, require_role
 from app.core.permissions import Permission
 from app.database import get_db
 from app.models.all_models import Appointment, Billing, Doctor, Patient, Prescription, User
@@ -29,7 +29,7 @@ def get_my_prescriptions(
 @router.post("/", response_model=PrescriptionResponse, status_code=201)
 def create_prescription(
     payload: PrescriptionCreate, request: Request, db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(Permission.prescriptions_create)),
+    current_user: User = Depends(require_role("doctor")),
 ):
     appointment = db.query(Appointment).filter(Appointment.id == payload.appointment_id).with_for_update().first()
     if not appointment:
@@ -40,8 +40,8 @@ def create_prescription(
     existing = db.query(Prescription).filter_by(appointment_id=appointment.id).first()
     if existing:
         return existing
-    if appointment.status not in ("checked_in", "in_progress"):
-        raise HTTPException(status_code=409, detail="Consultation can only complete a checked-in appointment")
+    if appointment.status != "in_progress":
+        raise HTTPException(status_code=409, detail="Consultation can only complete an in-progress appointment")
     if doctor.consultation_fee is None:
         raise HTTPException(status_code=409, detail="Doctor consultation fee is not configured")
 
@@ -54,14 +54,14 @@ def create_prescription(
     )
     db.add_all([prescription, bill])
     appointment.status = "completed"
-    db.flush()
-    record_audit_event(
-        db, actor=current_user, action="consultation.completed", resource_type="appointment",
-        resource_id=str(appointment.id),
-        new_values={"status": "completed", "prescription_id": prescription.id, "billing_id": bill.id},
-        **request_audit_metadata(request),
-    )
     try:
+        db.flush()
+        record_audit_event(
+            db, actor=current_user, action="consultation.completed", resource_type="appointment",
+            resource_id=str(appointment.id),
+            new_values={"status": "completed", "prescription_id": prescription.id, "billing_id": bill.id},
+            **request_audit_metadata(request),
+        )
         db.commit()
     except IntegrityError:
         db.rollback()

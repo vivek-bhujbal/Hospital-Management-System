@@ -1,5 +1,9 @@
-import EnterpriseResourcePage from '@/components/EnterpriseResourcePage'
+import { fetchAPI } from '@/lib/api'
+import { ManagerStaff } from '@/lib/managerTypes'
 
-export default function ManagerStaff() {
-  return <EnterpriseResourcePage title="Staff" endpoint="/manager/staff" />
+import StaffMonitor from './StaffMonitor'
+
+export default async function ManagerStaffPage() {
+  const staff = await fetchAPI('/manager/staff') as ManagerStaff[]
+  return <StaffMonitor staff={staff} />
 }

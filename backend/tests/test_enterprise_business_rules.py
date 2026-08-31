@@ -54,12 +54,12 @@ def test_operational_endpoints_allow_owner_role_and_deny_patient(
         "/ambulance/dashboard",
     ],
 )
-def test_manager_can_view_enterprise_module_dashboards(
+def test_manager_cannot_enter_specialized_enterprise_modules(
     client, create_user, login, endpoint
 ):
     manager = create_user("hospital_manager")
 
-    assert client.get(endpoint, headers=headers(login(manager))).status_code == 200
+    assert client.get(endpoint, headers=headers(login(manager))).status_code == 403
 
 
 def test_appointment_booking_rejects_doctor_slot_collision(
@@ -123,6 +123,7 @@ def test_consultation_uses_configured_decimal_fee_and_is_idempotent(
     }
     auth = headers(login(doctor_user))
 
+    assert client.patch(f"/appointments/{appointment.id}/start", headers=auth).status_code == 200
     first = client.post("/prescriptions/", json=payload, headers=auth)
     second = client.post("/prescriptions/", json=payload, headers=auth)
     assert first.status_code == 201

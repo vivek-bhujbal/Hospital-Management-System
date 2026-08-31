@@ -1,80 +1,15 @@
-import ClientForm from '@/components/ClientForm'
-import SubmitButton from '@/components/SubmitButton'
-import AutoRefresh from '@/components/AutoRefresh'
 import { fetchAPI } from '@/lib/api'
-import { collectPaymentAction } from '@/app/actions/receptionist'
 import { PERMISSIONS } from '@/lib/permissions'
+import { ReceptionAppointment, ReceptionBill, ReceptionPatient } from '@/lib/receptionistTypes'
 import { requirePermission } from '@/lib/serverPermissions'
+import BillingDesk from './BillingDesk'
 
-export default async function ReceptionistBilling() {
+export default async function ReceptionistBillingPage() {
   await requirePermission(PERMISSIONS.BILLING_COLLECT, '/receptionist/home')
-  const bills = await fetchAPI('/billing/')
-  const settings = await fetchAPI('/admin/settings')
-
-  return (
-    <div className="space-y-6">
-      <AutoRefresh interval={5000} />
-      <div>
-        <h1 className="text-3xl font-bold text-gray-800 tracking-tight">Billing Desk</h1>
-        <p className="text-gray-600 mt-1">Manage pending and recently paid patient invoices.</p>
-      </div>
-      
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-8 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
-                <th className="px-8 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Patient ID</th>
-                <th className="px-8 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
-                <th className="px-8 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-8 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Action / Receipt</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 bg-white">
-              {bills.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-8 py-8 text-center text-gray-500">No invoices found.</td>
-                </tr>
-              )}
-              {bills.map((b: any) => (
-                <tr key={b.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-8 py-5 whitespace-nowrap text-gray-800 font-medium">{new Date(b.created_at).toLocaleDateString()}</td>
-                  <td className="px-8 py-5 whitespace-nowrap text-gray-600">#{b.patient_id}</td>
-                  <td className="px-8 py-5 whitespace-nowrap font-bold text-gray-800">₹{b.amount}</td>
-                  <td className="px-8 py-5 whitespace-nowrap">
-                    <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full border ${b.status === 'paid' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
-                      {b.status}
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 whitespace-nowrap">
-                    {b.status === 'pending' ? (
-                      <ClientForm action={collectPaymentAction} className="flex gap-3 items-center">
-                        <input type="hidden" name="id" value={b.id} />
-                        <select name="payment_method" required className="bg-gray-50 border border-gray-200 text-gray-800 p-1.5 text-sm rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
-                          <option value="cash">Cash</option>
-                          <option value="card">Card</option>
-                          <option value="upi">UPI</option>
-                        </select>
-                        <SubmitButton className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm">
-                          Collect
-                        </SubmitButton>
-                      </ClientForm>
-                    ) : (
-                      <div className="text-sm">
-                        <p className="font-semibold text-emerald-600">{b.receipt_no}</p>
-                        <div className="text-xs text-gray-500 mt-1">
-                          {settings?.hospital_name || 'Hospital'} | GSTIN: {settings?.gstin || 'N/A'}
-                        </div>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  )
+  const [bills, patients, appointments] = await Promise.all([
+    fetchAPI('/billing/') as Promise<ReceptionBill[]>,
+    fetchAPI('/patients/') as Promise<ReceptionPatient[]>,
+    fetchAPI('/appointments/') as Promise<ReceptionAppointment[]>,
+  ])
+  return <BillingDesk initialBills={bills} patients={patients} appointments={appointments} />
 }

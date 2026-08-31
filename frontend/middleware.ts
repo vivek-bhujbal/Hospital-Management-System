@@ -7,6 +7,12 @@ const publicPaths = ['/login', '/register', '/forgot-password', '/reset-password
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
+
+  // Let the route handler clear stale/disabled sessions before middleware
+  // redirects authenticated users away from public pages.
+  if (pathname === '/session-expired') {
+    return NextResponse.next()
+  }
   
   // Skip middleware for static files, api routes, Next.js internal routes
   if (
@@ -36,7 +42,7 @@ export function middleware(request: NextRequest) {
 
   // Fast UX guard based on the HttpOnly role cookie. The live backend role
   // check in each layout and FastAPI dependencies remain authoritative.
-  if (token && userRole) {
+  if (token) {
     const routeRedirect = protectedPortalRedirect(pathname, userRole)
     if (routeRedirect) {
       return NextResponse.redirect(new URL(routeRedirect, request.url))

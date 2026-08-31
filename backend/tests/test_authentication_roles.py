@@ -98,3 +98,23 @@ def test_disabling_user_revokes_existing_token(client, db, create_user, login):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 403
+
+
+def test_receptionist_without_employee_profile_cannot_login_or_keep_session(
+    client, db, create_user, login
+):
+    user = create_user("doctor")
+    token = login(user)
+    user.role = "receptionist"
+    db.commit()
+
+    denied_login = client.post(
+        "/auth/login",
+        json={"email": user.email, "password": "Strong1!Password"},
+    )
+    denied_session = client.get(
+        "/auth/me", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert denied_login.status_code == 403
+    assert denied_session.status_code == 403

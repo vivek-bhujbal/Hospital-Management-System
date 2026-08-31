@@ -1,5 +1,9 @@
-import EnterpriseResourcePage from '@/components/EnterpriseResourcePage'
+import { fetchAPI } from '@/lib/api'
+import type { NursePatient } from '@/lib/nurseTypes'
 
-export default function NursePatients() {
-  return <EnterpriseResourcePage title="Assigned patients" endpoint="/nurse/patients" />
+import PatientDirectory from './PatientDirectory'
+
+export default async function NursePatients() {
+  const patients = await fetchAPI('/nurse/patients') as NursePatient[]
+  return <PatientDirectory patients={patients} />
 }

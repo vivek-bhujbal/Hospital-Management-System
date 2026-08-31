@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, is_user_access_active
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database import get_db
@@ -137,7 +137,7 @@ def login(login_data: LoginRequest, db: Session = Depends(get_db)):
             detail="Invalid email or password"
         )
         
-    if not user.is_active:
+    if not is_user_access_active(user, db):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Your account has been disabled."

@@ -86,7 +86,6 @@ class EmployeePermission(Base):
     can_schedule_appointment = Column(Integer, default=1)
     can_checkin_patient = Column(Integer, default=1)
     can_collect_billing = Column(Integer, default=1)
-    can_view_reports = Column(Integer, default=0)
 
 class Appointment(Base):
     __tablename__ = 'appointments'
@@ -289,6 +288,7 @@ class Medicine(Base):
     __tablename__ = 'medicine'
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(150), nullable=False)
+    sku = Column(String(100), unique=True, nullable=True)
     generic_name = Column(String(150))
     category_id = Column(Integer, ForeignKey('medicine_category.id'), nullable=False)
     unit = Column(String(50))
@@ -336,6 +336,7 @@ class MedicineBatch(Base):
     )
     id = Column(Integer, primary_key=True, index=True)
     medicine_id = Column(Integer, ForeignKey('medicine.id'), nullable=False)
+    supplier_id = Column(Integer, ForeignKey('supplier.id'), nullable=True)
     batch_number = Column(String(100), nullable=False)
     expiry_date = Column(Date, nullable=False)
     purchase_price = Column(DECIMAL(10, 2), nullable=False)
@@ -353,6 +354,7 @@ class StockTransaction(Base):
     batch_id = Column(Integer, ForeignKey('medicine_batch.id'), nullable=False)
     transaction_type = Column(Enum('purchase', 'dispense', 'adjustment', 'return'), nullable=False)
     quantity = Column(Integer, nullable=False)
+    reason = Column(String(255))
     reference_id = Column(Integer)
     created_at = Column(TIMESTAMP, server_default=func.now())
     created_by = Column(Integer, ForeignKey('users.id'), nullable=False)
@@ -386,6 +388,27 @@ class DispensingItem(Base):
     quantity = Column(Integer, nullable=False)
     selling_price = Column(DECIMAL(10, 2), nullable=False)
     total_price = Column(DECIMAL(10, 2), nullable=False)
+
+
+class PharmacyPrescriptionReview(Base):
+    """Pharmacy workflow metadata kept separate from the doctor's prescription."""
+    __tablename__ = 'pharmacy_prescription_reviews'
+    __table_args__ = (
+        UniqueConstraint('prescription_id', name='uq_pharmacy_review_prescription'),
+        Index('ix_pharmacy_review_status_updated', 'status', 'updated_at'),
+    )
+    id = Column(Integer, primary_key=True, index=True)
+    prescription_id = Column(Integer, ForeignKey('prescriptions.id'), nullable=False)
+    status = Column(Enum(
+        'verified', 'rejected', 'ready_for_dispensing', 'dispensed',
+        name='pharmacy_prescription_status',
+    ), nullable=False)
+    rejection_reason = Column(Text)
+    verified_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    verified_at = Column(TIMESTAMP, nullable=True)
+    updated_by = Column(Integer, ForeignKey('users.id'), nullable=False)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
 class LabTestCategory(Base):
     __tablename__ = 'lab_test_categories'
@@ -421,8 +444,12 @@ class LabOrder(Base):
     patient_id = Column(Integer, ForeignKey('patients.id'), nullable=False)
     doctor_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     appointment_id = Column(Integer, ForeignKey('appointments.id'), nullable=True)
+    assigned_technician_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    instructions = Column(Text)
+    priority = Column(Enum('routine', 'urgent', 'stat'), nullable=False, default='routine')
+    accepted_at = Column(TIMESTAMP, nullable=True)
     ordered_at = Column(TIMESTAMP, server_default=func.now())
-    status = Column(Enum('pending', 'in_progress', 'completed', 'cancelled'), default='pending')
+    status = Column(Enum('ordered', 'sample_collected', 'processing', 'completed', 'cancelled'), default='ordered')
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
 class LabOrderItem(Base):
@@ -451,12 +478,12 @@ class LabResult(Base):
     order_item_id = Column(Integer, ForeignKey('lab_order_items.id'), nullable=False)
     technician_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     result_value = Column(Text)
+    numeric_value = Column(DECIMAL(18, 6))
     unit = Column(String(50))
     reference_range = Column(String(100))
     remarks = Column(Text)
-    status = Column(Enum('completed', 'verified'), default='completed')
-    verified_by = Column(Integer, ForeignKey('users.id'), nullable=True)
-    verified_at = Column(TIMESTAMP, nullable=True)
+    status = Column(Enum('draft', 'finalized'), default='draft')
+    finalized_at = Column(TIMESTAMP, nullable=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 

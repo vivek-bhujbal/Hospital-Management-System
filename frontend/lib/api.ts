@@ -4,6 +4,13 @@ const API_BASE_URL = process.env.API_INTERNAL_URL
   || process.env.NEXT_PUBLIC_API_URL
   || 'http://localhost:8000';
 
+export class APIError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message)
+    this.name = 'APIError'
+  }
+}
+
 export async function fetchAPI(endpoint: string, options: RequestInit = {}) {
   const token = cookies().get('token')?.value;
   const headers: Record<string, string> = {
@@ -22,12 +29,12 @@ export async function fetchAPI(endpoint: string, options: RequestInit = {}) {
   });
 
   if (!res.ok) {
-    if (res.status === 401) {
+    if (res.status === 401 || (endpoint === '/auth/me' && res.status === 403)) {
       const { redirect } = await import('next/navigation');
-      redirect('/login');
+      redirect('/session-expired');
     }
     const errorBody = await res.text();
-    throw new Error(`API Request Failed: ${res.status} ${errorBody}`);
+    throw new APIError(res.status, `API Request Failed: ${res.status} ${errorBody}`);
   }
   return res.json();
 }

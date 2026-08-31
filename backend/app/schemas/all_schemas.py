@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
-from typing import Literal, Optional, List
+from typing import Dict, Literal, Optional, List
 from datetime import date, time, datetime
 from decimal import Decimal
 from enum import Enum
@@ -133,12 +133,12 @@ class EffectivePermissionsResponse(BaseModel):
 
 # Patient Schemas
 class PatientBase(BaseModel):
-    name: str
-    age: Optional[int] = None
+    name: str = Field(min_length=1, max_length=100)
+    age: Optional[int] = Field(default=None, ge=0, le=130)
     gender: Optional[GenderEnum] = None
-    contact: Optional[str] = None
-    address: Optional[str] = None
-    blood_group: Optional[str] = None
+    contact: Optional[str] = Field(default=None, max_length=20)
+    address: Optional[str] = Field(default=None, max_length=1000)
+    blood_group: Optional[str] = Field(default=None, max_length=5)
 
 class PatientCreate(PatientBase):
     user_id: Optional[int] = None
@@ -174,6 +174,13 @@ class DoctorCreate(DoctorBase):
     user_id: Optional[int] = None
     email: Optional[EmailStr] = None
 
+class DoctorSelfUpdate(BaseModel):
+    name: str
+    specialization: Optional[str] = None
+    timing_start: Optional[time] = None
+    timing_end: Optional[time] = None
+    contact: Optional[str] = None
+
 class DoctorCreateWithAuth(DoctorBase):
     email: EmailStr
     password: str
@@ -202,7 +209,6 @@ class EmployeePermissionBase(BaseModel):
     can_schedule_appointment: bool = True
     can_checkin_patient: bool = True
     can_collect_billing: bool = True
-    can_view_reports: bool = False
 
 class EmployeePermissionUpdate(EmployeePermissionBase):
     pass
@@ -247,11 +253,11 @@ class EmployeeResponse(EmployeeBase):
 
 # Appointment Schemas
 class AppointmentBase(BaseModel):
-    patient_id: int
-    doctor_id: int
+    patient_id: int = Field(gt=0)
+    doctor_id: int = Field(gt=0)
     appt_date: date
     appt_time: time
-    reason: Optional[str] = None
+    reason: Optional[str] = Field(default=None, max_length=255)
     status: Optional[ApptStatusEnum] = ApptStatusEnum.requested
 
 class AppointmentCreate(AppointmentBase):
@@ -272,7 +278,10 @@ class PrescriptionBase(BaseModel):
     notes: Optional[str] = None
 
 class PrescriptionCreate(PrescriptionBase):
-    pass
+    appointment_id: int = Field(gt=0)
+    diagnosis: str = Field(min_length=1)
+    medicine: str = Field(min_length=1)
+    dosage: str = Field(min_length=1)
 
 class PrescriptionResponse(PrescriptionBase):
     id: int
@@ -420,6 +429,78 @@ class DepartmentResponse(DepartmentBase):
     updated_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
+class ManagerDepartmentSummary(BaseModel):
+    department_id: int
+    name: str
+    active_doctors: int
+    today_appointments: int
+
+
+class ManagerOverview(BaseModel):
+    today_appointments: int
+    total_patients: int
+    active_doctors: int
+    active_staff: int
+    completed_consultations: int
+    pending_appointments: int
+    operational_alerts: List[str]
+    patient_flow: Dict[str, int]
+    department_summary: List[ManagerDepartmentSummary]
+
+
+class ManagerAppointment(BaseModel):
+    id: int
+    patient_id: int
+    patient_name: str
+    doctor_id: int
+    doctor_name: str
+    department_id: Optional[int] = None
+    department_name: Optional[str] = None
+    appt_date: date
+    appt_time: time
+    reason: Optional[str] = None
+    status: ApptStatusEnum
+    checked_in_at: Optional[datetime] = None
+
+
+class ManagerPatient(BaseModel):
+    id: int
+    name: str
+    age: Optional[int] = None
+    gender: Optional[GenderEnum] = None
+    contact: Optional[str] = None
+    appointment_count: int
+    last_appointment_date: Optional[date] = None
+    next_appointment_date: Optional[date] = None
+
+
+class ManagerDoctor(BaseModel):
+    id: int
+    name: str
+    specialization: Optional[str] = None
+    department_id: Optional[int] = None
+    department_name: Optional[str] = None
+    timing_start: Optional[time] = None
+    timing_end: Optional[time] = None
+    status: DoctorStatusEnum
+    availability: str
+    appointments_today: int
+    appointments_pending: int
+    appointments_completed: int
+
+
+class ManagerStaff(BaseModel):
+    id: int
+    name: str
+    role: RoleEnum
+    designation: Optional[str] = None
+    department_name: Optional[str] = None
+    shift_start: Optional[time] = None
+    shift_end: Optional[time] = None
+    status: str
+    availability: str
+
+
 class DailyReport(BaseModel):
     date: date
     patient_count: int
@@ -457,7 +538,22 @@ class PatientVitalBase(BaseModel):
     notes: Optional[str] = None
 
 class PatientVitalCreate(PatientVitalBase):
-    pass
+    @model_validator(mode='after')
+    def require_observation(self):
+        observation_fields = (
+            self.temperature,
+            self.blood_pressure_systolic,
+            self.blood_pressure_diastolic,
+            self.pulse,
+            self.respiratory_rate,
+            self.oxygen_saturation,
+            self.weight,
+            self.height,
+            self.notes,
+        )
+        if not any(value is not None and value != '' for value in observation_fields):
+            raise ValueError('At least one vital measurement or observation is required')
+        return self
 
 class PatientVitalResponse(PatientVitalBase):
     id: int
@@ -469,7 +565,7 @@ class PatientVitalResponse(PatientVitalBase):
 class NursingNoteBase(BaseModel):
     patient_id: int
     appointment_id: Optional[int] = None
-    note: str
+    note: str = Field(min_length=1, max_length=4000)
 
 class NursingNoteCreate(NursingNoteBase):
     pass
@@ -484,8 +580,8 @@ class NursingNoteResponse(NursingNoteBase):
 class NursingTaskBase(BaseModel):
     patient_id: int
     assigned_nurse_id: Optional[int] = None
-    task_type: str
-    description: str
+    task_type: str = Field(min_length=1, max_length=100)
+    description: str = Field(min_length=1, max_length=4000)
     priority: Literal['low', 'medium', 'high', 'emergency'] = 'medium'
     status: Literal['pending', 'in_progress', 'completed', 'cancelled'] = 'pending'
     due_at: Optional[datetime] = None
@@ -495,7 +591,7 @@ class NursingTaskCreate(NursingTaskBase):
     status: Literal['pending'] = 'pending'
 
 class NursingTaskUpdate(BaseModel):
-    status: Optional[Literal['pending', 'in_progress', 'completed', 'cancelled']] = None
+    status: Literal['in_progress', 'completed']
 
 class NursingTaskResponse(NursingTaskBase):
     id: int
@@ -533,6 +629,7 @@ class SupplierResponse(SupplierBase):
 
 class MedicineBase(BaseModel):
     name: str
+    sku: Optional[str] = Field(default=None, min_length=1, max_length=100)
     generic_name: Optional[str] = None
     category_id: int
     unit: Optional[str] = None
@@ -549,6 +646,7 @@ class MedicineResponse(MedicineBase):
 
 class MedicineBatchBase(BaseModel):
     medicine_id: int
+    supplier_id: Optional[int] = None
     batch_number: str
     expiry_date: date
     purchase_price: Decimal = Field(ge=0, decimal_places=2)
@@ -585,6 +683,33 @@ class DispenseRequest(BaseModel):
         if len(batch_ids) != len(set(batch_ids)):
             raise ValueError('Each medicine batch may appear only once')
         return self
+
+
+class PharmacyPrescriptionAction(BaseModel):
+    action: Literal['verify', 'reject', 'mark_for_dispensing']
+    reason: Optional[str] = Field(default=None, max_length=1000)
+
+    @model_validator(mode='after')
+    def require_rejection_reason(self):
+        if self.action == 'reject' and not (self.reason or '').strip():
+            raise ValueError('A rejection reason is required')
+        return self
+
+
+class InventoryAdjustmentRequest(BaseModel):
+    action: Literal['add_stock', 'update_stock', 'expired', 'damaged']
+    quantity: int = Field(gt=0)
+    reason: Optional[str] = Field(default=None, max_length=255)
+
+
+class InventoryBatchCreate(BaseModel):
+    medicine_id: int = Field(gt=0)
+    supplier_id: Optional[int] = Field(default=None, gt=0)
+    batch_number: str = Field(min_length=1, max_length=100)
+    expiry_date: date
+    quantity: int = Field(gt=0)
+    purchase_price: Decimal = Field(ge=0, decimal_places=2)
+    selling_price: Decimal = Field(ge=0, decimal_places=2)
 
 class DispensingItemResponse(BaseModel):
     id: int
@@ -666,7 +791,10 @@ class LabOrderBase(BaseModel):
     patient_id: int
     doctor_id: int
     appointment_id: Optional[int] = None
-    status: Literal['pending', 'in_progress', 'completed', 'cancelled'] = 'pending'
+    assigned_technician_id: Optional[int] = None
+    instructions: Optional[str] = None
+    priority: Literal['routine', 'urgent', 'stat'] = 'routine'
+    status: Literal['ordered', 'sample_collected', 'processing', 'completed', 'cancelled'] = 'ordered'
 
 class LabOrderResponse(LabOrderBase):
     id: int
@@ -677,6 +805,8 @@ class LabOrderResponse(LabOrderBase):
 class LabOrderCreate(BaseModel):
     patient_id: int
     appointment_id: Optional[int] = None
+    instructions: Optional[str] = Field(default=None, max_length=2000)
+    priority: Literal['routine', 'urgent', 'stat'] = 'routine'
     test_ids: List[int] = Field(min_length=1)
 
     @field_validator('test_ids')
@@ -713,16 +843,18 @@ class LabSampleResponse(LabSampleBase):
 class LabResultBase(BaseModel):
     order_item_id: int
     result_value: Optional[str] = None
+    numeric_value: Optional[Decimal] = None
     unit: Optional[str] = None
     reference_range: Optional[str] = None
     remarks: Optional[str] = None
-    status: Literal['completed', 'verified'] = 'completed'
+    status: Literal['draft', 'finalized'] = 'draft'
 
 class LabResultCreate(LabResultBase):
     pass
 
 class LabResultUpdate(BaseModel):
     result_value: Optional[str] = None
+    numeric_value: Optional[Decimal] = None
     unit: Optional[str] = None
     reference_range: Optional[str] = None
     remarks: Optional[str] = None
@@ -730,8 +862,7 @@ class LabResultUpdate(BaseModel):
 class LabResultResponse(LabResultBase):
     id: int
     technician_id: int
-    verified_by: Optional[int] = None
-    verified_at: Optional[datetime] = None
+    finalized_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
 
 # Radiology Feature Schemas

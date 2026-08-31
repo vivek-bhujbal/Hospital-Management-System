@@ -6,16 +6,17 @@ import { ReactNode } from 'react'
 interface Props {
   children: ReactNode
   className?: string
+  disabled?: boolean
 }
 
-export default function SubmitButton({ children, className = "bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition" }: Props) {
+export default function SubmitButton({ children, disabled = false, className = "bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition" }: Props) {
   const { pending } = useFormStatus()
 
   return (
     <button
       type="submit"
-      disabled={pending}
-      className={`${className} ${pending ? 'opacity-70 cursor-not-allowed' : ''} flex items-center justify-center`}
+      disabled={pending || disabled}
+      className={`${className} ${pending || disabled ? 'opacity-70 cursor-not-allowed' : ''} flex items-center justify-center`}
     >
       {pending && (
         <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

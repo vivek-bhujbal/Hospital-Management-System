@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react'
 
-import { createStaffAccountAction } from '@/app/actions/staff'
+import { createStaffAccountAction, setHospitalManagerActiveAction } from '@/app/actions/staff'
 import type { AccountSummary } from '@/components/AdminAccountsPanel'
 import SubmitButton from '@/components/SubmitButton'
 
@@ -21,7 +21,7 @@ const STAFF_ROLES = [
 
 export default function StaffAccountsPanel({ accounts }: { accounts: AccountSummary[] }) {
   const formRef = useRef<HTMLFormElement>(null)
-  const [role, setRole] = useState<string>('nurse')
+  const [role, setRole] = useState<string>('hospital_manager')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
@@ -34,8 +34,19 @@ export default function StaffAccountsPanel({ accounts }: { accounts: AccountSumm
       return
     }
     formRef.current?.reset()
-    setRole('nurse')
+    setRole('hospital_manager')
     setSuccess('Staff account created successfully.')
+  }
+
+  async function toggleManagerStatus(formData: FormData) {
+    setError('')
+    setSuccess('')
+    const result = await setHospitalManagerActiveAction(formData)
+    if (result.error) {
+      setError(result.error)
+      return
+    }
+    setSuccess('Hospital Manager status updated.')
   }
 
   return (
@@ -43,7 +54,7 @@ export default function StaffAccountsPanel({ accounts }: { accounts: AccountSumm
       <section className="rounded-xl border bg-white p-6 shadow-sm">
         <h2 className="text-xl font-semibold text-gray-900">Create staff account</h2>
         <p className="mt-1 text-sm text-gray-600">
-          Available only to Admin and Super Admin. Patient and administrator roles cannot be created here.
+          Admin creates Hospital Manager and other clinical or operational staff accounts here.
         </p>
         <form ref={formRef} action={submit} className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {error && <p className="md:col-span-2 xl:col-span-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
@@ -88,11 +99,11 @@ export default function StaffAccountsPanel({ accounts }: { accounts: AccountSumm
       <section className="overflow-x-auto rounded-xl border bg-white shadow-sm">
         <table className="min-w-full divide-y text-sm">
           <thead className="bg-gray-50 text-left text-gray-600">
-            <tr><th className="p-4">Name</th><th className="p-4">Email</th><th className="p-4">Role</th><th className="p-4">Profile</th><th className="p-4">Status</th></tr>
+            <tr><th className="p-4">Name</th><th className="p-4">Email</th><th className="p-4">Role</th><th className="p-4">Profile</th><th className="p-4">Status</th><th className="p-4">Action</th></tr>
           </thead>
           <tbody className="divide-y">
             {accounts.length === 0 ? (
-              <tr><td colSpan={5} className="p-8 text-center text-gray-500">No staff accounts created yet.</td></tr>
+              <tr><td colSpan={6} className="p-8 text-center text-gray-500">No staff accounts created yet.</td></tr>
             ) : accounts.map((account) => (
               <tr key={account.id}>
                 <td className="p-4 font-medium text-gray-900">{account.name}</td>
@@ -100,6 +111,17 @@ export default function StaffAccountsPanel({ accounts }: { accounts: AccountSumm
                 <td className="p-4 capitalize">{account.role.replaceAll('_', ' ')}</td>
                 <td className="p-4 text-gray-600">{account.profile_id ? `#${account.profile_id}` : 'Not required'}</td>
                 <td className="p-4">{account.is_active ? 'Active' : 'Disabled'}</td>
+                <td className="p-4">
+                  {account.role === 'hospital_manager' ? (
+                    <form action={toggleManagerStatus}>
+                      <input type="hidden" name="id" value={account.id} />
+                      <input type="hidden" name="is_active" value={String(!account.is_active)} />
+                      <SubmitButton className="rounded-lg border px-3 py-2 hover:bg-gray-50">
+                        {account.is_active ? 'Deactivate' : 'Activate'}
+                      </SubmitButton>
+                    </form>
+                  ) : '—'}
+                </td>
               </tr>
             ))}
           </tbody>

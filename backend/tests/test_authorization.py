@@ -32,18 +32,22 @@ def test_platform_and_hospital_admin_roles_do_not_inherit_each_other(client, cre
 
 def test_operational_role_does_not_inherit_admin_permissions():
     nurse_permissions = get_role_permissions("nurse")
-    assert Permission.patients_view_medical_history.value in nurse_permissions
+    assert Permission.nursing_view.value in nurse_permissions
+    assert Permission.patients_view_medical_history.value not in nurse_permissions
+    assert Permission.patients_update.value not in nurse_permissions
+    assert Permission.consultations_update.value not in nurse_permissions
+    assert Permission.prescriptions_view.value not in nurse_permissions
     assert Permission.staff_update.value not in nurse_permissions
     assert Permission.settings_manage.value not in nurse_permissions
 
 
-def test_permission_approval_and_denial(client, create_user, login):
+def test_generic_patient_history_permission_is_denied_to_operational_roles(client, create_user, login):
     nurse = create_user("nurse")
     pharmacist = create_user("pharmacist")
 
     assert client.get(
         "/probes/patient-history", headers=headers(login(nurse))
-    ).status_code == 200
+    ).status_code == 403
     assert client.get(
         "/probes/patient-history", headers=headers(login(pharmacist))
     ).status_code == 403

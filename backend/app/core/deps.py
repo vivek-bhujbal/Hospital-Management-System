@@ -13,11 +13,28 @@ from app.core.permissions import (
 )
 from app.core.roles import RoleLike, normalize_role, role_satisfies_any
 from app.database import get_db
-from app.models.all_models import User
+from app.models.all_models import Employee, User
 from app.services.authorization import user_has_permission
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+
+
+def is_user_access_active(user: User, db: Session) -> bool:
+    """Return whether both the login and linked staff profile are active."""
+    if not user.is_active:
+        return False
+
+    if user.role == "receptionist":
+        employee_status = (
+            db.query(Employee.status)
+            .filter(Employee.user_id == user.id)
+            .scalar()
+        )
+        if employee_status != "active":
+            return False
+
+    return True
 
 
 def get_current_user(
@@ -41,7 +58,7 @@ def get_current_user(
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
         raise credentials_exception
-    if not user.is_active:
+    if not is_user_access_active(user, db):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Your account has been disabled.",
@@ -62,6 +79,21 @@ class RoleChecker:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Operation not permitted for this role",
+            )
+        return current_user
+
+
+class ExactRoleChecker:
+    """Require the user's stored role without applying role inheritance."""
+
+    def __init__(self, role: RoleLike):
+        self.role = normalize_role(role)
+
+    def __call__(self, current_user: User = Depends(get_current_user)):
+        if current_user.role != self.role:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Operation requires the exact assigned role",
             )
         return current_user
 
@@ -95,6 +127,10 @@ class PermissionChecker:
 
 def require_role(role: RoleLike) -> RoleChecker:
     return RoleChecker([role])
+
+
+def require_exact_role(role: RoleLike) -> ExactRoleChecker:
+    return ExactRoleChecker(role)
 
 
 def require_any_role(*roles: RoleLike) -> RoleChecker:

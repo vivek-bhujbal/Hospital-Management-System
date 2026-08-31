@@ -123,7 +123,6 @@ export async function updateEmployeeAction(formData: FormData): Promise<void> {
     designation: formData.get('designation'),
     shift_start: formData.get('shift_start') || null,
     shift_end: formData.get('shift_end') || null,
-    status: formData.get('status'),
   }
   const res = await fetch(`${API_URL}/admin/employees/${id}`, {
     method: 'PATCH',
@@ -138,6 +137,33 @@ export async function updateEmployeeAction(formData: FormData): Promise<void> {
   revalidatePath('/admin/employees')
 }
 
+type EmployeeStatus = 'active' | 'inactive'
+type EmployeeStatusResult = { success?: boolean; error?: string }
+
+export async function updateEmployeeStatusAction(
+  id: number,
+  status: EmployeeStatus,
+): Promise<EmployeeStatusResult> {
+  if (!Number.isInteger(id) || id <= 0 || !['active', 'inactive'].includes(status)) {
+    return { error: 'Invalid employee status update' }
+  }
+
+  const res = await fetch(`${API_URL}/admin/employees/${id}`, {
+    method: 'PATCH',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ status }),
+  })
+
+  if (res.status === 401) redirect('/session-expired')
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}))
+    return { error: errorData.detail || 'Failed to update employee status' }
+  }
+
+  revalidatePath('/admin/employees')
+  return { success: true }
+}
+
 export async function updateEmployeePermissionsAction(formData: FormData): Promise<any> {
   const id = formData.get('id')
   const payload = {
@@ -145,7 +171,6 @@ export async function updateEmployeePermissionsAction(formData: FormData): Promi
     can_schedule_appointment: formData.get('can_schedule_appointment') === 'on',
     can_checkin_patient: formData.get('can_checkin_patient') === 'on',
     can_collect_billing: formData.get('can_collect_billing') === 'on',
-    can_view_reports: formData.get('can_view_reports') === 'on',
   }
 
   const res = await fetch(`${API_URL}/admin/employees/${id}/permissions`, {

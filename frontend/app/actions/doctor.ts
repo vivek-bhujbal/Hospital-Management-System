@@ -7,20 +7,67 @@ import { redirect } from 'next/navigation'
 const API_URL = process.env.API_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 function getAuthHeaders() {
-  const token = cookies().get('token')?.value;
+  const token = cookies().get('token')?.value
   return {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${token}`
   }
 }
 
+function formValue(formData: FormData, key: string): string {
+  return String(formData.get(key) || '').trim()
+}
+
+async function responseError(res: Response, fallback: string): Promise<string> {
+  if (res.status === 401) redirect('/session-expired')
+  if (res.status === 403) return 'You are not authorized to access this resource.'
+  try {
+    const body = await res.json()
+    return typeof body.detail === 'string' ? body.detail : fallback
+  } catch {
+    return fallback
+  }
+}
+
+export async function startConsultationAction(formData: FormData) {
+  const appointmentId = Number(formValue(formData, 'appointment_id'))
+  if (!Number.isInteger(appointmentId) || appointmentId <= 0) {
+    return { error: 'Select a valid appointment.' }
+  }
+
+  const res = await fetch(`${API_URL}/appointments/${appointmentId}/start`, {
+    method: 'PATCH',
+    headers: getAuthHeaders(),
+    cache: 'no-store',
+  })
+  if (!res.ok) return { error: await responseError(res, 'Unable to start consultation.') }
+
+  revalidatePath('/doctor/home')
+  revalidatePath('/doctor/appointments')
+  revalidatePath('/doctor/consultation')
+  redirect(`/doctor/consultation?appointment_id=${appointmentId}`)
+}
+
 export async function completeConsultationAction(formData: FormData) {
+  const appointmentId = Number(formValue(formData, 'appointment_id'))
+  const diagnosis = formValue(formData, 'diagnosis')
+  const medicine = formValue(formData, 'medicine')
+  const dosage = formValue(formData, 'dosage')
+  const instructions = formValue(formData, 'instructions')
+  const clinicalNotes = formValue(formData, 'clinical_notes')
+  if (!Number.isInteger(appointmentId) || appointmentId <= 0 || !diagnosis || !medicine || !dosage) {
+    return { error: 'Appointment, diagnosis, medicines, and dosage are required.' }
+  }
+  const notes = [
+    instructions ? `Instructions: ${instructions}` : '',
+    clinicalNotes ? `Clinical notes: ${clinicalNotes}` : '',
+  ].filter(Boolean).join('\n\n') || null
   const payload = {
-    appointment_id: parseInt(formData.get('appointment_id') as string),
-    diagnosis: formData.get('diagnosis'),
-    medicine: formData.get('medicine'),
-    dosage: formData.get('dosage'),
-    notes: formData.get('notes')
+    appointment_id: appointmentId,
+    diagnosis,
+    medicine,
+    dosage,
+    notes,
   }
 
   const res = await fetch(`${API_URL}/prescriptions/`, {
@@ -29,14 +76,12 @@ export async function completeConsultationAction(formData: FormData) {
     body: JSON.stringify(payload)
   })
 
-  if (!res.ok) {
-    const text = await res.text()
-    console.error(text)
-    return { error: "Failed to complete consultation" }
-  }
+  if (!res.ok) return { error: await responseError(res, 'Unable to complete consultation.') }
 
   revalidatePath('/doctor/home')
   revalidatePath('/doctor/appointments')
+  revalidatePath('/doctor/patients')
+  revalidatePath('/doctor/consultation')
   redirect('/doctor/home')
 }
 
@@ -47,7 +92,6 @@ export async function updateDoctorProfileAction(formData: FormData) {
     contact: formData.get('contact'),
     timing_start: formData.get('timing_start') || null,
     timing_end: formData.get('timing_end') || null,
-    status: formData.get('status') || 'active'
   }
 
   const res = await fetch(`${API_URL}/doctors/me`, {
@@ -56,7 +100,9 @@ export async function updateDoctorProfileAction(formData: FormData) {
     body: JSON.stringify(payload)
   })
 
-  if (!res.ok) return { error: "Failed to update profile" }
+  if (!res.ok) return { error: await responseError(res, 'Unable to update profile.') }
 
   revalidatePath('/doctor/profile')
+  revalidatePath('/doctor/home')
+  return { success: true }
 }
