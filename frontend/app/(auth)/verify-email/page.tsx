@@ -67,7 +67,7 @@ function VerifyEmailContent() {
           </div>
           <h2 className="text-2xl font-bold text-slate-900 mb-2">{message}</h2>
           <p className="text-slate-600 mb-8">Your account is now active. You can login.</p>
-          <Link href="/login" className="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-md text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all">
+          <Link href="/login" className="hms-button hms-button-primary w-full">
             Go to Login
           </Link>
         </>
@@ -96,9 +96,7 @@ function VerifyEmailContent() {
 
 export default function VerifyEmailPage() {
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden">
-      <div className="absolute top-0 right-1/4 w-96 h-96 bg-purple-200 rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-blob"></div>
-      <div className="absolute bottom-0 left-1/4 w-96 h-96 bg-pink-200 rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-blob animation-delay-4000"></div>
+    <main id="main-content" className="hms-auth min-h-screen bg-[var(--hms-bg)] flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8">
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10 text-center mb-6">
         <h2 className="text-center text-3xl font-extrabold text-slate-900 tracking-tight">
@@ -111,6 +109,6 @@ export default function VerifyEmailPage() {
           <VerifyEmailContent />
         </Suspense>
       </div>
-    </div>
+    </main>
   )
 }

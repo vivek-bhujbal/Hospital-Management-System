@@ -41,6 +41,14 @@ def test_operational_role_does_not_inherit_admin_permissions():
     assert Permission.settings_manage.value not in nurse_permissions
 
 
+def test_doctor_has_owned_appointment_workflow_permissions():
+    doctor_permissions = get_role_permissions("doctor")
+    assert Permission.appointments_update.value in doctor_permissions
+    assert Permission.appointments_checkin.value in doctor_permissions
+    assert Permission.consultations_create.value in doctor_permissions
+    assert Permission.prescriptions_create.value in doctor_permissions
+
+
 def test_generic_patient_history_permission_is_denied_to_operational_roles(client, create_user, login):
     nurse = create_user("nurse")
     pharmacist = create_user("pharmacist")

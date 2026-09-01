@@ -1,204 +1,94 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { registerAction } from '@/app/actions/auth'
+import {
+  AlertCircle, ArrowRight, CalendarDays, Check, CheckCircle2, ChevronDown,
+  Droplets, Eye, EyeOff, LoaderCircle, LockKeyhole, Mail, Phone, UserRound, UsersRound,
+} from 'lucide-react'
 import Link from 'next/link'
+import { useState } from 'react'
+
+import { registerAction } from '@/app/actions/auth'
+import AuthShell from '@/components/layout/AuthShell'
+import { Modal } from '@/components/ui/Modal'
+
+const passwordChecks = [
+  ['8+ characters', (value: string) => value.length >= 8],
+  ['Upper & lowercase', (value: string) => /[A-Z]/.test(value) && /[a-z]/.test(value)],
+  ['Number', (value: string) => /[0-9]/.test(value)],
+  ['Special character', (value: string) => /[!@#$%^&*]/.test(value)],
+] as const
+
+const labelClass = 'block text-sm font-semibold text-slate-700 dark:text-slate-200'
+const iconClass = 'pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400'
 
 export default function RegisterPage() {
-  const router = useRouter()
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [password, setPassword] = useState('')
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
     setLoading(true)
     setError('')
-    
-    const formData = new FormData(e.currentTarget)
-    
-    // Client-side validation
-    const password = formData.get('password') as string
-    const confirmPassword = formData.get('confirm_password') as string
-    
-    if (password !== confirmPassword) {
-      setError('Passwords do not match')
+    const formData = new FormData(event.currentTarget)
+    const submittedPassword = String(formData.get('password') || '')
+    const confirmPassword = String(formData.get('confirm_password') || '')
+
+    if (submittedPassword !== confirmPassword) {
+      setError('Passwords do not match.')
       setLoading(false)
       return
     }
-    
-    // Simple strength validation (length, uppercase, lowercase, number, special char)
-    const strongRegex = new RegExp("^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#\\$%\\^&\\*])(?=.{8,})")
-    if (!strongRegex.test(password)) {
-      setError('Password must contain at least 8 characters, an uppercase letter, a lowercase letter, a number, and a special character.')
+    if (!passwordChecks.every(([, check]) => check(submittedPassword))) {
+      setError('Create a stronger password that meets all four security requirements.')
       setLoading(false)
       return
     }
 
     const result = await registerAction(null, formData)
-    
-    if (result?.error) {
-      setError(result.error)
-      setLoading(false)
-    } else if (result?.success) {
-      setSuccess(true)
-      setLoading(false)
-    }
+    if (result?.error) setError(result.error)
+    else if (result?.success) setSuccess(true)
+    setLoading(false)
   }
 
-  return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden">
-      {/* Background blobs */}
-      <div className="absolute top-0 right-1/4 w-96 h-96 bg-purple-200 rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-blob"></div>
-      <div className="absolute bottom-0 left-1/4 w-96 h-96 bg-pink-200 rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-blob animation-delay-4000"></div>
+  return <>
+    <AuthShell wide eyebrow="Patient self-service" title="Create your patient account" description="Register securely to manage appointments, prescriptions, bills, and your health profile from one place.">
+      {error && <div role="alert" aria-live="polite" className="mb-5 flex gap-3 rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><p className="font-medium">{error}</p></div>}
 
-      {success && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-8 text-center animate-in fade-in zoom-in duration-300">
-            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-6">
-              <svg className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <h2 className="text-2xl font-bold text-slate-900 mb-2">Registration Successful!</h2>
-            <p className="text-slate-600 mb-8">
-              Please check your email and click the verification link to activate your account before logging in.
-            </p>
-            <Link href="/login" className="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-md text-sm font-semibold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 transition-all">
-              Go to Login
-            </Link>
+      <form onSubmit={handleSubmit} className="space-y-6" noValidate>
+        <section aria-labelledby="personal-details-heading">
+          <div className="mb-4 flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"><UserRound className="h-4 w-4" /></span><div><h2 id="personal-details-heading" className="text-sm font-bold text-slate-900 dark:text-slate-50">Personal details</h2><p className="text-xs text-slate-500 dark:text-slate-400">Use the same details shown on your hospital records.</p></div></div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label htmlFor="name" className={labelClass}>Full name<span className="ml-1 text-rose-500">*</span><span className="relative mt-2 block"><UserRound className={iconClass} /><input id="name" name="name" type="text" autoComplete="name" required className="hms-input pl-10" placeholder="Enter your full name" /></span></label>
+            <label htmlFor="email" className={labelClass}>Email address<span className="ml-1 text-rose-500">*</span><span className="relative mt-2 block"><Mail className={iconClass} /><input id="email" name="email" type="email" autoComplete="email" required className="hms-input pl-10" placeholder="name@example.com" /></span></label>
+            <label htmlFor="contact" className={labelClass}>Phone number<span className="ml-1 text-rose-500">*</span><span className="relative mt-2 block"><Phone className={iconClass} /><input id="contact" name="contact" type="tel" autoComplete="tel" required className="hms-input pl-10" placeholder="Enter your phone number" /></span></label>
+            <label htmlFor="dob" className={labelClass}>Date of birth<span className="ml-1 text-rose-500">*</span><span className="relative mt-2 block"><CalendarDays className={iconClass} /><input id="dob" name="dob" type="date" autoComplete="bday" max={new Date().toISOString().slice(0, 10)} required className="hms-input pl-10" /></span></label>
+            <label htmlFor="gender" className={labelClass}>Gender<span className="ml-1 text-rose-500">*</span><span className="relative mt-2 block"><UsersRound className={iconClass} /><select id="gender" name="gender" required className="hms-input appearance-none pl-10 pr-10"><option value="">Select gender</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select><ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /></span></label>
+            <label htmlFor="blood_group" className={labelClass}>Blood group<span className="relative mt-2 block"><Droplets className={iconClass} /><select id="blood_group" name="blood_group" className="hms-input appearance-none pl-10 pr-10"><option value="">Select blood group</option>{['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(group => <option key={group} value={group}>{group}</option>)}</select><ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /></span></label>
           </div>
-        </div>
-      )}
+        </section>
 
-      <div className="sm:mx-auto sm:w-full sm:max-w-xl relative z-10">
-        <Link href="/" className="flex justify-center mb-6 text-purple-600 hover:text-purple-800 transition-colors">
-          <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
-        </Link>
-        <h2 className="text-center text-3xl font-extrabold text-slate-900 tracking-tight">
-          Create a Patient Account
-        </h2>
-        <p className="mt-2 text-center text-sm text-slate-600">
-          Join the hospital management platform today
-        </p>
-      </div>
+        <div className="border-t border-slate-200 dark:border-slate-800" />
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-2xl relative z-10 perspective-1000">
-        <div className="bg-white/90 backdrop-blur-xl py-8 px-6 sm:px-10 border border-white rounded-3xl shadow-[0_20px_50px_rgba(8,_112,_184,_0.1)] transform-gpu transition-all duration-300 hover:shadow-[0_20px_60px_rgba(100,_40,_200,_0.2)] hover:-translate-y-1">
-          {error && (
-            <div className="mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded-r-md shadow-inner">
-              <div className="flex items-center">
-                <svg className="h-5 w-5 text-red-400 mr-3 shrink-0" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                </svg>
-                <p className="text-sm text-red-700 font-medium">{error}</p>
-              </div>
-            </div>
-          )}
-
-          <form className="space-y-6" onSubmit={handleSubmit}>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="group">
-                <label htmlFor="name" className="block text-sm font-semibold text-slate-700 mb-1 group-focus-within:text-purple-600 transition-colors">Full Name</label>
-                <div className="relative shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] rounded-xl bg-slate-50 border border-slate-200 focus-within:border-purple-500 focus-within:ring-2 focus-within:ring-purple-200 transition-all">
-                  <input id="name" name="name" type="text" required className="appearance-none block w-full px-4 py-3 bg-transparent rounded-xl focus:outline-none text-slate-800 placeholder-slate-400" placeholder="John Doe" />
-                </div>
-              </div>
-
-              <div className="group">
-                <label htmlFor="email" className="block text-sm font-semibold text-slate-700 mb-1 group-focus-within:text-purple-600 transition-colors">Email address</label>
-                <div className="relative shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] rounded-xl bg-slate-50 border border-slate-200 focus-within:border-purple-500 focus-within:ring-2 focus-within:ring-purple-200 transition-all">
-                  <input id="email" name="email" type="email" required className="appearance-none block w-full px-4 py-3 bg-transparent rounded-xl focus:outline-none text-slate-800 placeholder-slate-400" placeholder="you@example.com" />
-                </div>
-              </div>
-
-              <div className="group">
-                <label htmlFor="contact" className="block text-sm font-semibold text-slate-700 mb-1 group-focus-within:text-purple-600 transition-colors">Phone Number</label>
-                <div className="relative shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] rounded-xl bg-slate-50 border border-slate-200 focus-within:border-purple-500 focus-within:ring-2 focus-within:ring-purple-200 transition-all">
-                  <input id="contact" name="contact" type="tel" required className="appearance-none block w-full px-4 py-3 bg-transparent rounded-xl focus:outline-none text-slate-800 placeholder-slate-400" placeholder="+1 (555) 000-0000" />
-                </div>
-              </div>
-
-              <div className="group">
-                <label htmlFor="dob" className="block text-sm font-semibold text-slate-700 mb-1 group-focus-within:text-purple-600 transition-colors">Date of Birth</label>
-                <div className="relative shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] rounded-xl bg-slate-50 border border-slate-200 focus-within:border-purple-500 focus-within:ring-2 focus-within:ring-purple-200 transition-all">
-                  <input id="dob" name="dob" type="date" required className="appearance-none block w-full px-4 py-3 bg-transparent rounded-xl focus:outline-none text-slate-700" />
-                </div>
-              </div>
-
-              <div className="group">
-                <label htmlFor="gender" className="block text-sm font-semibold text-slate-700 mb-1 group-focus-within:text-purple-600 transition-colors">Gender</label>
-                <div className="relative shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] rounded-xl bg-slate-50 border border-slate-200 focus-within:border-purple-500 focus-within:ring-2 focus-within:ring-purple-200 transition-all">
-                  <select id="gender" name="gender" required className="appearance-none block w-full px-4 py-3 bg-transparent rounded-xl focus:outline-none text-slate-700 cursor-pointer">
-                    <option value="">Select Gender</option>
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
-              </div>
-              
-              <div className="group">
-                <label htmlFor="blood_group" className="block text-sm font-semibold text-slate-700 mb-1 group-focus-within:text-purple-600 transition-colors">Blood Group</label>
-                <div className="relative shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] rounded-xl bg-slate-50 border border-slate-200 focus-within:border-purple-500 focus-within:ring-2 focus-within:ring-purple-200 transition-all">
-                  <select id="blood_group" name="blood_group" className="appearance-none block w-full px-4 py-3 bg-transparent rounded-xl focus:outline-none text-slate-700 cursor-pointer">
-                    <option value="">Select Blood Group</option>
-                    <option value="A+">A+</option>
-                    <option value="A-">A-</option>
-                    <option value="B+">B+</option>
-                    <option value="B-">B-</option>
-                    <option value="AB+">AB+</option>
-                    <option value="AB-">AB-</option>
-                    <option value="O+">O+</option>
-                    <option value="O-">O-</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="group">
-                <label htmlFor="password" className="block text-sm font-semibold text-slate-700 mb-1 group-focus-within:text-purple-600 transition-colors">Password</label>
-                <div className="relative shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] rounded-xl bg-slate-50 border border-slate-200 focus-within:border-purple-500 focus-within:ring-2 focus-within:ring-purple-200 transition-all flex">
-                  <input id="password" name="password" type={showPassword ? "text" : "password"} required className="appearance-none block w-full px-4 py-3 bg-transparent rounded-xl focus:outline-none text-slate-800 placeholder-slate-400" placeholder="••••••••" />
-                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="pr-3 flex items-center text-slate-400 hover:text-purple-600 transition-colors">
-                    {showPassword ? (
-                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0a10.05 10.05 0 011.564-3.03A10 10 0 0121.542 12a9.97 9.97 0 01-1.563 3.03" /></svg>
-                    ) : (
-                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              <div className="group">
-                <label htmlFor="confirm_password" className="block text-sm font-semibold text-slate-700 mb-1 group-focus-within:text-purple-600 transition-colors">Confirm Password</label>
-                <div className="relative shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] rounded-xl bg-slate-50 border border-slate-200 focus-within:border-purple-500 focus-within:ring-2 focus-within:ring-purple-200 transition-all">
-                  <input id="confirm_password" name="confirm_password" type={showPassword ? "text" : "password"} required className="appearance-none block w-full px-4 py-3 bg-transparent rounded-xl focus:outline-none text-slate-800 placeholder-slate-400" placeholder="••••••••" />
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-4">
-              <button type="submit" disabled={loading} className={`w-full flex justify-center py-4 px-4 rounded-xl shadow-[0_8px_0_rgba(93,59,219,1)] active:shadow-[0_0px_0_rgba(93,59,219,1)] active:translate-y-2 text-sm font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 transition-all uppercase tracking-wider ${loading ? 'opacity-70 cursor-not-allowed active:translate-y-0 active:shadow-[0_8px_0_rgba(93,59,219,1)]' : ''}`}>
-                {loading ? (
-                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                ) : 'Create Account'}
-              </button>
-            </div>
-          </form>
-
-          <div className="mt-8 text-center text-sm border-t border-slate-200 pt-6">
-            <span className="text-slate-500 font-medium">Already have an account? </span>
-            <Link href="/login" className="font-bold text-purple-600 hover:text-purple-500 transition-colors">
-              Sign in instead
-            </Link>
+        <section aria-labelledby="account-security-heading">
+          <div className="mb-4 flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"><LockKeyhole className="h-4 w-4" /></span><div><h2 id="account-security-heading" className="text-sm font-bold text-slate-900 dark:text-slate-50">Account security</h2><p className="text-xs text-slate-500 dark:text-slate-400">Choose a unique password you do not use elsewhere.</p></div></div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label htmlFor="password" className={labelClass}>Password<span className="ml-1 text-rose-500">*</span><span className="relative mt-2 block"><LockKeyhole className={iconClass} /><input id="password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" value={password} onChange={event => setPassword(event.target.value)} required className="hms-input pl-10 pr-11" placeholder="Create a secure password" /><button type="button" onClick={() => setShowPassword(value => !value)} className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-brand-700 dark:hover:bg-slate-800" aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></span></label>
+            <label htmlFor="confirm_password" className={labelClass}>Confirm password<span className="ml-1 text-rose-500">*</span><span className="relative mt-2 block"><CheckCircle2 className={iconClass} /><input id="confirm_password" name="confirm_password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" required className="hms-input pl-10" placeholder="Enter the password again" /></span></label>
           </div>
-        </div>
-      </div>
-    </div>
-  )
+          <div className="mt-4 grid gap-2 rounded-xl border bg-[var(--hms-surface-muted)] p-3 sm:grid-cols-2">{passwordChecks.map(([label, check]) => { const passed = check(password); return <div key={label} className={`flex items-center gap-2 text-xs font-medium ${passed ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-500 dark:text-slate-400'}`}><span className={`flex h-4 w-4 items-center justify-center rounded-full ${passed ? 'bg-emerald-100 dark:bg-emerald-950' : 'bg-slate-200 dark:bg-slate-700'}`}>{passed && <Check className="h-3 w-3" />}</span>{label}</div> })}</div>
+        </section>
+
+        <button type="submit" disabled={loading} className="hms-button hms-button-primary w-full">{loading ? <><LoaderCircle className="h-4 w-4 animate-spin" />Creating your secure account…</> : <>Create patient account<ArrowRight className="h-4 w-4" /></>}</button>
+      </form>
+
+      <div className="mt-6 border-t pt-5 text-center text-sm text-slate-500">Already have an account? <Link href="/login" className="font-semibold text-brand-700 hover:text-brand-800 dark:text-brand-300">Sign in</Link></div>
+    </AuthShell>
+
+    <Modal open={success} title="Patient account created" description="One final security step is required before you can sign in." onClose={() => setSuccess(false)} size="sm">
+      <div className="text-center"><span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"><CheckCircle2 className="h-7 w-7" /></span><p className="mt-4 text-sm leading-6 text-slate-600 dark:text-slate-300">We sent a verification link to your email address. Open it to activate your patient account.</p><Link href="/login" className="hms-button hms-button-primary mt-6 w-full">Continue to sign in<ArrowRight className="h-4 w-4" /></Link></div>
+    </Modal>
+  </>
 }

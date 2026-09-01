@@ -1,114 +1,26 @@
 'use client'
 
-import { useState } from 'react'
+import { Printer } from 'lucide-react'
 
-export default function ReceiptModal({ 
-  bill, 
-  settings, 
-  patient, 
-  doctorName, 
-  onClose 
-}: { 
-  bill: any, 
-  settings: any, 
-  patient: any, 
-  doctorName: string,
-  onClose: () => void 
-}) {
+import { Modal } from '@/components/ui/Modal'
+
+export default function ReceiptModal({ bill, settings, patient, doctorName, onClose }: { bill: any; settings: any; patient: any; doctorName: string; onClose: () => void }) {
   if (!bill) return null
-
-  const totalAmount = parseFloat(bill.amount)
+  const totalAmount = Number(bill.amount)
   const registrationFee = 50
   const consultationFee = totalAmount > registrationFee ? totalAmount - registrationFee : totalAmount
+  const paidAt = bill.paid_at || bill.created_at
+  const currency = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 })
 
-  return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-[#F8F9FA] rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-        
-        {/* Header */}
-        <div className="p-8 pb-6 text-center border-b border-gray-200 border-dashed">
-          <h2 className="text-xl font-bold text-gray-900 mb-2">{settings?.hospital_name || 'Hospital Name'}</h2>
-          <p className="text-sm text-gray-600 leading-relaxed">
-            {settings?.address || 'Hospital Address'}<br/>
-            Ph: {settings?.phone || 'N/A'} · GSTIN: {settings?.gstin || 'N/A'}
-          </p>
-        </div>
-
-        {/* Receipt Info */}
-        <div className="px-8 py-6 bg-white">
-          <div className="flex justify-between items-start mb-6">
-            <div>
-              <p className="text-xs text-gray-400 font-medium mb-1 uppercase tracking-wider">Receipt no</p>
-              <p className="font-semibold text-gray-900">{bill.receipt_no || 'N/A'}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-xs text-gray-400 font-medium mb-1 uppercase tracking-wider">Date and time</p>
-              <p className="font-semibold text-gray-900">
-                {bill.paid_at ? new Date(bill.paid_at).toLocaleString('en-US', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : new Date(bill.created_at).toLocaleString('en-US', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-              </p>
-            </div>
-          </div>
-
-          <div className="bg-gray-50 rounded-xl p-4 mb-6 space-y-3">
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500 font-medium">Patient</span>
-              <span className="font-semibold text-gray-900">{patient?.name || 'N/A'}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500 font-medium">Patient ID</span>
-              <span className="font-semibold text-gray-900">HMS-{patient?.id || 'N/A'}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500 font-medium">Doctor</span>
-              <span className="font-semibold text-gray-900">Dr {doctorName}</span>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex justify-between text-sm font-medium border-b border-gray-100 pb-2">
-              <span className="text-gray-400 uppercase tracking-wider text-xs">Description</span>
-              <span className="text-gray-400 uppercase tracking-wider text-xs">Amount</span>
-            </div>
-            
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-800 font-medium">Consultation fee</span>
-              <span className="font-medium">₹{consultationFee.toFixed(0)}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-800 font-medium">Registration charge</span>
-              <span className="font-medium">₹{registrationFee.toFixed(0)}</span>
-            </div>
-            
-            <div className="border-t border-gray-200 border-dashed pt-4 mt-2">
-              <div className="flex justify-between items-center mb-4">
-                <span className="font-bold text-gray-900 text-base">Total paid</span>
-                <span className="font-bold text-gray-900 text-lg">₹{totalAmount.toFixed(0)}</span>
-              </div>
-              
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500 font-medium">Payment method</span>
-                <span className="font-semibold text-gray-900 capitalize">{bill.payment_method || 'Cash'}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="px-8 pb-10 pt-6 bg-[#F8F9FA] text-center border-t border-gray-200 border-dashed relative">
-          <p className="text-xs text-gray-500 font-medium">
-            Thank you for visiting {settings?.hospital_name?.split(' ')[0] || 'our'} hospital<br/>
-            Collected by: Reception desk {bill.collected_by || '1'}
-          </p>
-          
-          <button 
-            onClick={onClose}
-            className="absolute -bottom-5 left-1/2 -translate-x-1/2 bg-gray-600 hover:bg-gray-800 text-white rounded-full p-2.5 shadow-lg transition-colors"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
-          </button>
-        </div>
-        
+  return <Modal open title="Payment receipt" description="Official record of this hospital payment." onClose={onClose} size="sm" footer={<><button type="button" onClick={onClose} className="hms-button hms-button-secondary">Close</button><button type="button" onClick={() => window.print()} className="hms-button hms-button-primary"><Printer className="h-4 w-4" />Print receipt</button></>}>
+    <div className="rounded-xl border bg-[var(--hms-surface-muted)]">
+      <header className="border-b border-dashed px-5 py-5 text-center"><h3 className="font-bold text-slate-900 dark:text-slate-100">{settings?.hospital_name || 'Hospital'}</h3><p className="mt-1 text-xs leading-5 text-slate-500">{settings?.address || 'Hospital address'}<br />Phone: {settings?.phone || 'Not available'} · GSTIN: {settings?.gstin || 'Not available'}</p></header>
+      <div className="bg-[var(--hms-surface)] px-5 py-5">
+        <div className="flex justify-between gap-5 text-sm"><div><p className="text-[0.68rem] font-bold uppercase tracking-wide text-slate-400">Receipt number</p><p className="mt-1 font-semibold">{bill.receipt_no || 'Not assigned'}</p></div><div className="text-right"><p className="text-[0.68rem] font-bold uppercase tracking-wide text-slate-400">Paid at</p><p className="mt-1 font-semibold">{new Date(paidAt).toLocaleString('en-IN')}</p></div></div>
+        <dl className="mt-5 space-y-2 rounded-xl bg-[var(--hms-surface-muted)] p-4 text-sm"><div className="flex justify-between gap-4"><dt className="text-slate-500">Patient</dt><dd className="font-semibold text-right">{patient?.name || 'Not available'}</dd></div><div className="flex justify-between gap-4"><dt className="text-slate-500">Patient ID</dt><dd className="font-semibold">HMS-{patient?.id || 'N/A'}</dd></div><div className="flex justify-between gap-4"><dt className="text-slate-500">Doctor</dt><dd className="font-semibold text-right">Dr. {doctorName}</dd></div></dl>
+        <dl className="mt-5 space-y-3 text-sm"><div className="flex justify-between"><dt className="text-slate-600">Consultation fee</dt><dd className="font-medium">{currency.format(consultationFee)}</dd></div><div className="flex justify-between"><dt className="text-slate-600">Registration charge</dt><dd className="font-medium">{currency.format(registrationFee)}</dd></div><div className="flex justify-between border-t border-dashed pt-4 text-base"><dt className="font-bold">Total paid</dt><dd className="font-bold text-brand-800 dark:text-brand-300">{currency.format(totalAmount)}</dd></div><div className="flex justify-between"><dt className="text-slate-500">Payment method</dt><dd className="font-semibold capitalize">{bill.payment_method || 'Cash'}</dd></div></dl>
       </div>
+      <footer className="border-t border-dashed px-5 py-4 text-center text-xs leading-5 text-slate-500">Thank you for choosing {settings?.hospital_name || 'our hospital'}.<br />Collected by reception desk {bill.collected_by || ''}</footer>
     </div>
-  )
+  </Modal>
 }

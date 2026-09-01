@@ -29,6 +29,33 @@ async function responseError(res: Response, fallback: string): Promise<string> {
   }
 }
 
+function revalidateDoctorAppointment(appointmentId: number, patientId?: number) {
+  revalidatePath('/doctor/home')
+  revalidatePath('/doctor/appointments')
+  revalidatePath('/doctor/consultation')
+  if (patientId && Number.isInteger(patientId)) {
+    revalidatePath(`/doctor/patients/${patientId}`)
+  }
+}
+
+export async function confirmAssignedAppointmentAction(formData: FormData) {
+  const appointmentId = Number(formValue(formData, 'appointment_id'))
+  const patientId = Number(formValue(formData, 'patient_id'))
+  if (!Number.isInteger(appointmentId) || appointmentId <= 0) {
+    return { error: 'Select a valid appointment.' }
+  }
+
+  const res = await fetch(`${API_URL}/appointments/${appointmentId}/confirm`, {
+    method: 'PATCH',
+    headers: getAuthHeaders(),
+    cache: 'no-store',
+  })
+  if (!res.ok) return { error: await responseError(res, 'Unable to confirm appointment.') }
+
+  revalidateDoctorAppointment(appointmentId, patientId)
+  return { success: true }
+}
+
 export async function startConsultationAction(formData: FormData) {
   const appointmentId = Number(formValue(formData, 'appointment_id'))
   if (!Number.isInteger(appointmentId) || appointmentId <= 0) {
@@ -42,9 +69,7 @@ export async function startConsultationAction(formData: FormData) {
   })
   if (!res.ok) return { error: await responseError(res, 'Unable to start consultation.') }
 
-  revalidatePath('/doctor/home')
-  revalidatePath('/doctor/appointments')
-  revalidatePath('/doctor/consultation')
+  revalidateDoctorAppointment(appointmentId)
   redirect(`/doctor/consultation?appointment_id=${appointmentId}`)
 }
 

@@ -1,56 +1,17 @@
+import { CircleDollarSign, ReceiptText } from 'lucide-react'
 import AutoRefresh from '@/components/AutoRefresh'
+import { EmptyState, PageHeader, StatCard, StatusBadge } from '@/components/ui/HmsUI'
 import { fetchAPI } from '@/lib/api'
 
+interface Transaction { id: number; created_at: string; patient_id: number; amount: number | string; status: string; payment_method: string | null; receipt_no: string | null }
+interface BillingReport { paid_total: number; pending_total: number; recent_transactions: Transaction[] }
+
 export default async function AdminBilling() {
-  const report = await fetchAPI('/admin/billing/report')
-
-  return (
-    <div className="space-y-6">
-      <AutoRefresh interval={5000} />
-      <h1 className="text-3xl font-bold text-gray-800">Financial Overview</h1>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-          <h2 className="text-xl font-semibold mb-4 text-green-700">Total Collected Revenue</h2>
-          <p className="text-4xl font-bold text-green-700">₹{report.paid_total.toFixed(2)}</p>
-        </div>
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-          <h2 className="text-xl font-semibold mb-4 text-red-600">Pending Dues</h2>
-          <p className="text-4xl font-bold text-red-600">₹{report.pending_total.toFixed(2)}</p>
-        </div>
-      </div>
-
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
-        <h2 className="text-xl font-semibold mb-4 text-gray-800">Recent Transactions</h2>
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead>
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Patient ID</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Method</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Receipt</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {report.recent_transactions.map((t: any) => (
-              <tr key={t.id}>
-                <td className="px-6 py-4 whitespace-nowrap">{new Date(t.created_at).toLocaleDateString()}</td>
-                <td className="px-6 py-4 whitespace-nowrap">#{t.patient_id}</td>
-                <td className="px-6 py-4 whitespace-nowrap font-medium">₹{t.amount}</td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${t.status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                    {t.status}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap capitalize">{t.payment_method || '-'}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-gray-500">{t.receipt_no || '-'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
+  const report = await fetchAPI('/admin/billing/report') as BillingReport
+  const money = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' })
+  return <div className="space-y-6"><AutoRefresh interval={5000} />
+    <PageHeader eyebrow="Revenue cycle" title="Financial overview" description="Monitor collected revenue, outstanding dues, and recent hospital transactions." />
+    <div className="grid gap-4 md:grid-cols-2"><StatCard label="Total collected revenue" value={money.format(report.paid_total)} icon={CircleDollarSign} tone="success" helper="Successfully received" /><StatCard label="Pending dues" value={money.format(report.pending_total)} icon={ReceiptText} tone="warning" helper="Awaiting collection" /></div>
+    <section className="hms-card overflow-hidden"><div className="border-b border-slate-200 px-5 py-4 dark:border-slate-800"><h2 className="font-bold text-slate-900 dark:text-slate-50">Recent transactions</h2><p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Newest invoice and payment activity</p></div>{report.recent_transactions.length === 0 ? <EmptyState title="No transactions yet" description="Recorded billing activity will appear here." /> : <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead><tr><th className="px-5 py-3 text-left">Date</th><th className="px-5 py-3 text-left">Patient</th><th className="px-5 py-3 text-left">Amount</th><th className="px-5 py-3 text-left">Status</th><th className="px-5 py-3 text-left">Method</th><th className="px-5 py-3 text-left">Receipt</th></tr></thead><tbody className="divide-y divide-slate-200 dark:divide-slate-800">{report.recent_transactions.map(item => <tr key={item.id}><td className="whitespace-nowrap px-5 py-4">{new Date(item.created_at).toLocaleDateString('en-IN')}</td><td className="px-5 py-4 font-semibold">#{item.patient_id}</td><td className="px-5 py-4 font-semibold">{money.format(Number(item.amount))}</td><td className="px-5 py-4"><StatusBadge status={item.status} /></td><td className="px-5 py-4 capitalize">{item.payment_method || '—'}</td><td className="px-5 py-4 font-mono text-xs text-slate-500">{item.receipt_no || '—'}</td></tr>)}</tbody></table></div>}</section>
+  </div>
 }

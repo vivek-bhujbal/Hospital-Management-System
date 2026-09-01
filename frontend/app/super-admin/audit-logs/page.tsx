@@ -1,6 +1,8 @@
 import Link from 'next/link'
+import { ChevronLeft, ChevronRight, History } from 'lucide-react'
 
 import { fetchAPI } from '@/lib/api'
+import { EmptyState, PageHeader } from '@/components/ui/HmsUI'
 
 interface AuditEvent {
   id: number
@@ -23,33 +25,14 @@ export default async function SuperAdminAuditLogs({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Platform audit logs</h1>
-        <p className="mt-1 text-gray-600">Immutable platform activity ordered newest first.</p>
-      </div>
-      <section className="overflow-x-auto rounded-xl border bg-white shadow-sm">
-        <table className="min-w-full divide-y text-sm">
-          <thead className="bg-gray-50 text-left text-gray-600">
-            <tr><th className="p-4">Actor</th><th className="p-4">Action</th><th className="p-4">Resource</th><th className="p-4">Timestamp</th></tr>
-          </thead>
-          <tbody className="divide-y">
-            {events.length === 0 ? (
-              <tr><td colSpan={4} className="p-8 text-center text-gray-500">No audit events on this page.</td></tr>
-            ) : events.map((event) => (
-              <tr key={event.id}>
-                <td className="p-4">{event.actor_user_id ? `User #${event.actor_user_id}` : 'System'}</td>
-                <td className="p-4 font-medium text-gray-900">{event.action}</td>
-                <td className="p-4 text-gray-600">{event.resource_type}{event.resource_id ? ` #${event.resource_id}` : ''}</td>
-                <td className="p-4 whitespace-nowrap text-gray-600">{new Date(event.created_at).toLocaleString()}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <PageHeader eyebrow="Security & compliance" title="Platform audit logs" description="Review immutable platform activity, ordered from newest to oldest." />
+      <section className="hms-card overflow-hidden"><div className="flex items-center gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-800"><span className="rounded-xl bg-brand-50 p-2.5 text-brand-700 dark:bg-brand-950 dark:text-brand-300"><History className="h-5 w-5" /></span><div><h2 className="font-bold text-slate-900 dark:text-slate-50">Activity ledger</h2><p className="text-sm text-slate-500 dark:text-slate-400">Page {page} · up to {limit} events</p></div></div>
+        {events.length === 0 ? <EmptyState title="No audit events" description="There are no platform events recorded on this page." /> : <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50/80 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 dark:bg-slate-900/60 dark:text-slate-400"><tr><th className="px-5 py-3.5">Actor</th><th className="px-5 py-3.5">Action</th><th className="px-5 py-3.5">Resource</th><th className="px-5 py-3.5">Timestamp</th></tr></thead><tbody className="divide-y divide-slate-200 dark:divide-slate-800">{events.map(event => <tr key={event.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-900/50"><td className="px-5 py-4 font-semibold text-slate-900 dark:text-slate-100">{event.actor_user_id ? `User #${event.actor_user_id}` : 'System'}</td><td className="px-5 py-4"><span className="rounded-md bg-brand-50 px-2 py-1 font-mono text-xs font-semibold text-brand-800 dark:bg-brand-950 dark:text-brand-300">{event.action}</span></td><td className="px-5 py-4 text-slate-600 dark:text-slate-300">{event.resource_type}{event.resource_id ? ` #${event.resource_id}` : ''}</td><td className="whitespace-nowrap px-5 py-4 text-slate-500 dark:text-slate-400">{new Date(event.created_at).toLocaleString()}</td></tr>)}</tbody></table></div>}
       </section>
       <div className="flex items-center justify-between">
-        {page > 1 ? <Link className="rounded-lg border px-4 py-2" href={`?page=${page - 1}`}>Previous</Link> : <span />}
-        <span className="text-sm text-gray-600">Page {page}</span>
-        {events.length === limit ? <Link className="rounded-lg border px-4 py-2" href={`?page=${page + 1}`}>Next</Link> : <span />}
+        {page > 1 ? <Link className="hms-button hms-button-secondary" href={`?page=${page - 1}`}><ChevronLeft className="h-4 w-4" />Previous</Link> : <span />}
+        <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">Page {page}</span>
+        {events.length === limit ? <Link className="hms-button hms-button-secondary" href={`?page=${page + 1}`}>Next<ChevronRight className="h-4 w-4" /></Link> : <span />}
       </div>
     </div>
   )

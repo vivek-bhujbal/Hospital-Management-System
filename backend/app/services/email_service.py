@@ -1,5 +1,7 @@
 import os
 import smtplib
+import ssl
+import logging
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
@@ -12,13 +14,14 @@ SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
 SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", SMTP_USERNAME)
 SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "Hospital Management System")
+logger = logging.getLogger(__name__)
 
-def send_email(to_email: str, subject: str, html_body: str):
+def send_email(to_email: str, subject: str, html_body: str) -> bool:
     """
     Sends an email using the configured SMTP server.
     """
     if not SMTP_USERNAME or not SMTP_PASSWORD:
-        print("Warning: SMTP_USERNAME or SMTP_PASSWORD not set. Email not sent.")
+        logger.error("SMTP credentials are not configured; email was not sent")
         return False
         
     try:
@@ -30,14 +33,16 @@ def send_email(to_email: str, subject: str, html_body: str):
         part = MIMEText(html_body, "html")
         msg.attach(part)
 
-        server = smtplib.SMTP(SMTP_HOST, SMTP_PORT)
-        server.starttls()
-        server.login(SMTP_USERNAME, SMTP_PASSWORD)
-        server.sendmail(SMTP_FROM_EMAIL, to_email, msg.as_string())
-        server.quit()
+        context = ssl.create_default_context()
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as server:
+            server.ehlo()
+            server.starttls(context=context)
+            server.ehlo()
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.send_message(msg)
         return True
-    except Exception as e:
-        print(f"Failed to send email to {to_email}: {e}")
+    except (smtplib.SMTPException, OSError) as exc:
+        logger.exception("SMTP delivery failed: %s", exc)
         return False
 
 def send_verification_email(to_email: str, patient_name: str, verification_link: str):

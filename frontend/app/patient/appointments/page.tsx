@@ -4,6 +4,7 @@ import AutoRefresh from '@/components/AutoRefresh'
 import { fetchAPI } from '@/lib/api'
 import Link from 'next/link'
 import { bookAppointmentAction } from '@/app/actions/patient'
+import { EmptyState, PageHeader, StatusBadge } from '@/components/ui/HmsUI'
 
 export default async function PatientAppointments() {
   const appts = await fetchAPI('/appointments/me')
@@ -13,10 +14,11 @@ export default async function PatientAppointments() {
   return (
     <div className="space-y-8">
       <AutoRefresh interval={5000} />
-      <h1 className="text-3xl font-bold text-gray-800">My Appointments</h1>
+      <PageHeader eyebrow="My care" title="Appointments" description="Book a visit and track every appointment through its care journey." />
       
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-        <h2 className="text-xl font-semibold mb-4 text-blue-800">Book New Appointment</h2>
+      <section className="hms-card p-5 sm:p-6">
+        <h2 className="text-xl font-semibold mb-1">Book a new appointment</h2>
+        <p className="mb-5 text-sm text-slate-500">Choose your doctor, preferred date and time, and briefly tell us the reason for your visit.</p>
         <ClientForm action={bookAppointmentAction} className="space-y-4 max-w-md">
           <input type="hidden" name="patient_id" value={profile.id} />
           
@@ -44,18 +46,18 @@ export default async function PatientAppointments() {
             <input type="text" name="reason" className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
           </div>
           
-          <SubmitButton className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">
+          <SubmitButton>
             Book Appointment
           </SubmitButton>
         </ClientForm>
-      </div>
+      </section>
 
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-        <h2 className="text-xl font-semibold mb-4 text-blue-800">Appointment History</h2>
+      <section className="hms-card overflow-hidden">
+        <h2 className="border-b px-5 py-4 text-xl font-semibold">Appointment history</h2>
         {appts.length === 0 ? (
-          <p className="text-gray-500">No appointments found.</p>
+          <EmptyState title="No appointments yet" description="Your booked and completed visits will appear here." />
         ) : (
-          <table className="min-w-full divide-y divide-gray-200">
+          <div className="overflow-x-auto"><table className="min-w-full divide-y divide-gray-200">
             <thead>
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
@@ -70,17 +72,15 @@ export default async function PatientAppointments() {
                   <td className="px-6 py-4 whitespace-nowrap">{appt.appt_date}</td>
                   <td className="px-6 py-4 whitespace-nowrap">{appt.appt_time}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                      {appt.status}
-                    </span>
+                    <StatusBadge status={appt.status} />
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">{appt.reason || '-'}</td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
-      </div>
+      </section>
     </div>
   )
 }

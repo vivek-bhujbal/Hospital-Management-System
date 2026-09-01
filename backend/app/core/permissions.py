@@ -126,6 +126,8 @@ ROLE_PERMISSIONS: Dict[str, FrozenSet[str]] = {
         Permission.doctors_view.value,
         Permission.doctors_update_self.value,
         Permission.appointments_view.value,
+        Permission.appointments_update.value,
+        Permission.appointments_checkin.value,
         Permission.consultations_view.value,
         Permission.consultations_create.value,
         Permission.consultations_update.value,

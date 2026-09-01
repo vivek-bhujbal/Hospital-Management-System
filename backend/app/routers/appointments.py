@@ -18,6 +18,17 @@ allow_staff = require_permission(Permission.appointments_view)
 allow_confirm = require_permission(Permission.appointments_update)
 allow_checkin = require_permission(Permission.appointments_checkin)
 
+
+def require_doctor_appointment_ownership(
+    db: Session, current_user: User, appointment: Appointment
+) -> None:
+    """Keep doctor appointment mutations scoped to the assigned doctor profile."""
+    if current_user.role != "doctor":
+        return
+    doctor = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
+    if not doctor or appointment.doctor_id != doctor.id:
+        raise HTTPException(status_code=403, detail="Appointment is not assigned to this doctor")
+
 @router.post("/", response_model=AppointmentResponse, status_code=201)
 def book_appointment(
     appt_in: AppointmentCreate, request: Request, db: Session = Depends(get_db),
@@ -120,6 +131,7 @@ def get_appointments(date: Optional[date] = None, doctor_id: Optional[str] = Non
 def confirm_appointment(id: int, request: Request, db: Session = Depends(get_db), current_user: User = Depends(allow_confirm)):
     appt = db.query(Appointment).filter(Appointment.id == id).with_for_update().first()
     if not appt: raise HTTPException(status_code=404)
+    require_doctor_appointment_ownership(db, current_user, appt)
     if appt.status == "confirmed":
         return {"status": "success"}
     if appt.status != "requested":
@@ -137,6 +149,7 @@ def confirm_appointment(id: int, request: Request, db: Session = Depends(get_db)
 def checkin_appointment(id: int, request: Request, db: Session = Depends(get_db), current_user: User = Depends(allow_checkin)):
     appt = db.query(Appointment).filter(Appointment.id == id).with_for_update().first()
     if not appt: raise HTTPException(status_code=404)
+    require_doctor_appointment_ownership(db, current_user, appt)
     if appt.status == "checked_in":
         return {"status": "success"}
     if appt.status != "confirmed":
@@ -196,12 +209,13 @@ def start_consultation(
         raise HTTPException(status_code=403, detail="Appointment is not assigned to this doctor")
     if appointment.status == "in_progress":
         return {"status": "success"}
-    if appointment.status != "checked_in":
+    if appointment.status not in ("confirmed", "checked_in"):
         raise HTTPException(status_code=409, detail=f"Cannot start consultation from {appointment.status} state")
+    old_status = appointment.status
     appointment.status = "in_progress"
     record_audit_event(
         db, actor=current_user, action="consultation.started", resource_type="appointment",
-        resource_id=str(appointment.id), old_values={"status": "checked_in"},
+        resource_id=str(appointment.id), old_values={"status": old_status},
         new_values={"status": "in_progress"}, **request_audit_metadata(request),
     )
     db.commit()

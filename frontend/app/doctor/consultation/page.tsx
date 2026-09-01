@@ -1,6 +1,10 @@
 import Link from 'next/link'
 
-import { completeConsultationAction, startConsultationAction } from '@/app/actions/doctor'
+import {
+  completeConsultationAction,
+  confirmAssignedAppointmentAction,
+  startConsultationAction,
+} from '@/app/actions/doctor'
 import ClientForm from '@/components/ClientForm'
 import SubmitButton from '@/components/SubmitButton'
 import { fetchAPI } from '@/lib/api'
@@ -43,19 +47,19 @@ export default async function DoctorConsultation({ searchParams }: { searchParam
 
   if (!appointmentId) {
     const consultable = appointments.filter((appointment) =>
-      ['checked_in', 'in_progress'].includes(appointment.status),
+      ['requested', 'confirmed', 'checked_in', 'in_progress'].includes(appointment.status),
     )
     return (
       <div className="space-y-6">
         <div>
           <p className="text-sm font-semibold uppercase tracking-wider text-blue-600">Clinical workflow</p>
           <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-900">Consultation</h1>
-          <p className="mt-1 text-slate-600">Select a checked-in patient or continue an active consultation.</p>
+          <p className="mt-1 text-slate-600">Confirm an assigned visit, start a consultation, or continue an active prescription.</p>
         </div>
         {consultable.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center">
-            <p className="font-medium text-slate-800">No patients are ready for consultation</p>
-            <p className="mt-1 text-sm text-slate-500">A receptionist must check in the patient before you can start.</p>
+            <p className="font-medium text-slate-800">No active appointments assigned</p>
+            <p className="mt-1 text-sm text-slate-500">Confirmed and active appointments assigned to you will appear here.</p>
           </div>
         ) : (
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -71,9 +75,18 @@ export default async function DoctorConsultation({ searchParams }: { searchParam
                     <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize ring-1 ring-inset ${statusClass(appointment.status)}`}>
                       {statusLabel(appointment.status)}
                     </span>
-                    {appointment.status === 'checked_in' ? (
+                    {appointment.status === 'requested' ? (
+                      <ClientForm action={confirmAssignedAppointmentAction}>
+                        <input type="hidden" name="appointment_id" value={appointment.id} />
+                        <input type="hidden" name="patient_id" value={appointment.patient_id} />
+                        <SubmitButton className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800">
+                          Confirm appointment
+                        </SubmitButton>
+                      </ClientForm>
+                    ) : appointment.status === 'confirmed' || appointment.status === 'checked_in' ? (
                       <ClientForm action={startConsultationAction}>
                         <input type="hidden" name="appointment_id" value={appointment.id} />
+                        <input type="hidden" name="patient_id" value={appointment.patient_id} />
                         <SubmitButton className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
                           Start consultation
                         </SubmitButton>
@@ -115,7 +128,7 @@ export default async function DoctorConsultation({ searchParams }: { searchParam
 
   const patient = patientMap.get(appointment.patient_id)
   const history = await fetchAPI(`/patients/${appointment.patient_id}/history`) as DoctorPatientHistory
-  const canStart = appointment.status === 'checked_in'
+  const canStart = appointment.status === 'confirmed' || appointment.status === 'checked_in'
   const canComplete = appointment.status === 'in_progress'
 
   return (
@@ -165,8 +178,8 @@ export default async function DoctorConsultation({ searchParams }: { searchParam
 
       {canStart && (
         <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
-          <h2 className="text-lg font-semibold text-emerald-900">Patient is checked in and ready</h2>
-          <p className="mt-1 text-sm text-emerald-800">Start the consultation before entering clinical findings.</p>
+          <h2 className="text-lg font-semibold text-emerald-900">Ready to start consultation</h2>
+          <p className="mt-1 text-sm text-emerald-800">Start this assigned consultation to enter clinical findings and create a prescription.</p>
           <ClientForm action={startConsultationAction} className="mt-4">
             <input type="hidden" name="appointment_id" value={appointment.id} />
             <SubmitButton className="rounded-lg bg-emerald-600 px-5 py-2.5 font-semibold text-white hover:bg-emerald-700">
@@ -213,7 +226,7 @@ export default async function DoctorConsultation({ searchParams }: { searchParam
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-900">
           {appointment.status === 'completed'
             ? 'This consultation is complete and its historical record is read-only.'
-            : 'This appointment is not ready for consultation. The patient must be checked in first.'}
+            : 'This appointment must be confirmed before the consultation can start.'}
         </div>
       )}
     </div>

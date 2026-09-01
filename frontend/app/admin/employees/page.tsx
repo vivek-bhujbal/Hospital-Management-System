@@ -4,6 +4,7 @@ import { ShieldAlert } from 'lucide-react'
 import AddEmployeeModal from './AddEmployeeModal'
 import EmployeeStatusSelect from './EmployeeStatusSelect'
 import { updateEmployeeAction } from '@/app/actions/admin'
+import { EmptyState, PageHeader } from '@/components/ui/HmsUI'
 
 interface EmployeeSummary {
   id: number
@@ -30,13 +31,11 @@ export default async function EmployeesPage() {
   const employees = await getEmployees() as EmployeeSummary[]
 
   return (
-    <div className="p-8">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-gray-800">Manage Receptionist/Employees</h1>
-        <AddEmployeeModal />
-      </div>
+    <div className="space-y-6">
+      <PageHeader eyebrow="Administration" title="Receptionist employees" description="Maintain front-desk employee profiles, shifts, status, and scoped permissions." actions={<AddEmployeeModal />} />
 
-      <div className="bg-white rounded-xl shadow-md overflow-hidden">
+      <div className="hms-card overflow-hidden">
+        {employees.length === 0 ? <EmptyState title="No employees found" description="Create the first receptionist employee to begin managing front-desk operations." /> : <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
@@ -49,9 +48,6 @@ export default async function EmployeesPage() {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {employees.length === 0 && (
-              <tr><td colSpan={6} className="px-6 py-8 text-center text-gray-500">No employees found.</td></tr>
-            )}
             {employees.map((emp) => (
               <tr key={emp.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4 whitespace-nowrap">
@@ -61,7 +57,7 @@ export default async function EmployeesPage() {
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   <form id={`employee-${emp.id}`} action={updateEmployeeAction}>
                     <input type="hidden" name="id" value={emp.id} />
-                    <input form={`employee-${emp.id}`} name="designation" required defaultValue={emp.designation} className="w-40 rounded border p-2" aria-label="Designation" />
+                    <input form={`employee-${emp.id}`} name="designation" required defaultValue={emp.designation} className="hms-input w-44" aria-label="Designation" />
                   </form>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -76,14 +72,14 @@ export default async function EmployeesPage() {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                   <div className="flex items-center justify-end gap-3">
-                    <button form={`employee-${emp.id}`} className="rounded border px-3 py-2 text-blue-700 hover:bg-blue-50">Save</button>
-                    <Link href={`/admin/employees/${emp.id}/permissions`} className="flex items-center gap-1 text-indigo-600 hover:text-indigo-900"><ShieldAlert className="w-4 h-4" /> Permissions</Link>
+                    <button form={`employee-${emp.id}`} className="hms-button hms-button-secondary">Save</button>
+                    <Link href={`/admin/employees/${emp.id}/permissions`} className="hms-button hms-button-secondary"><ShieldAlert className="h-4 w-4" />Permissions</Link>
                   </div>
                 </td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>}
       </div>
     </div>
   )

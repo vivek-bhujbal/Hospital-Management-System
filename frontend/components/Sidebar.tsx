@@ -2,171 +2,181 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import type { LucideIcon } from 'lucide-react'
+import {
+  Activity, Ambulance, BarChart3, Bed, Building2, CalendarDays, ChevronLeft,
+  ChevronRight, ClipboardCheck, ClipboardList, CreditCard, FileCheck2, FileHeart,
+  FileText, FlaskConical, HeartPulse, Hospital, LayoutDashboard, LogOut, Microscope,
+  PackageSearch, Pill, ReceiptIndianRupee, Settings, ShieldCheck, ShieldPlus,
+  Stethoscope, TestTube2, UserCog, UserPlus, Users, WalletCards, X,
+} from 'lucide-react'
 
 import { logoutAction } from '@/app/actions/auth'
-import {
-  hasPermission,
-  Permission,
-  PERMISSIONS,
-  UserRole,
-} from '@/lib/permissions'
+import { hasPermission, Permission, PERMISSIONS, UserRole } from '@/lib/permissions'
 import { ROLE_HOME } from '@/lib/roleRoutes'
+import { cn } from '@/components/ui/HmsUI'
+
+export interface MenuItem {
+  name: string
+  path: string
+  icon: LucideIcon
+  permission?: Permission
+  group?: 'Overview' | 'Care workspace' | 'Operations' | 'Administration' | 'Governance'
+}
+
+const MENU_ITEMS: Record<UserRole, readonly MenuItem[]> = {
+  patient: [
+    { name: 'My overview', path: '/patient/home', icon: LayoutDashboard, group: 'Overview' },
+    { name: 'Appointments', path: '/patient/appointments', icon: CalendarDays, permission: PERMISSIONS.APPOINTMENTS_VIEW_SELF, group: 'Care workspace' },
+    { name: 'Prescriptions', path: '/patient/prescriptions', icon: Pill, permission: PERMISSIONS.PRESCRIPTIONS_VIEW_SELF, group: 'Care workspace' },
+    { name: 'Billing', path: '/patient/billing', icon: ReceiptIndianRupee, permission: PERMISSIONS.BILLING_VIEW_SELF, group: 'Operations' },
+    { name: 'My profile', path: '/patient/profile', icon: UserCog, permission: PERMISSIONS.PATIENTS_VIEW_SELF, group: 'Administration' },
+  ],
+  receptionist: [
+    { name: 'Front desk', path: '/receptionist/home', icon: LayoutDashboard, group: 'Overview' },
+    { name: 'Patients', path: '/receptionist/patients', icon: Users, permission: PERMISSIONS.PATIENTS_VIEW, group: 'Care workspace' },
+    { name: 'Register patient', path: '/receptionist/register-patient', icon: UserPlus, permission: PERMISSIONS.PATIENTS_CREATE, group: 'Care workspace' },
+    { name: 'Schedule', path: '/receptionist/schedule', icon: CalendarDays, permission: PERMISSIONS.APPOINTMENTS_CREATE, group: 'Operations' },
+    { name: "Today's queue", path: '/receptionist/queue', icon: ClipboardList, permission: PERMISSIONS.APPOINTMENTS_VIEW, group: 'Operations' },
+    { name: 'Billing desk', path: '/receptionist/billing', icon: CreditCard, permission: PERMISSIONS.BILLING_COLLECT, group: 'Operations' },
+  ],
+  doctor: [
+    { name: 'Clinical overview', path: '/doctor/home', icon: LayoutDashboard, group: 'Overview' },
+    { name: 'Appointments', path: '/doctor/appointments', icon: CalendarDays, permission: PERMISSIONS.APPOINTMENTS_VIEW, group: 'Care workspace' },
+    { name: 'Patients', path: '/doctor/patients', icon: Users, permission: PERMISSIONS.PATIENTS_VIEW, group: 'Care workspace' },
+    { name: 'Consultation', path: '/doctor/consultation', icon: Stethoscope, permission: PERMISSIONS.CONSULTATIONS_CREATE, group: 'Care workspace' },
+    { name: 'My profile', path: '/doctor/profile', icon: UserCog, permission: PERMISSIONS.DOCTORS_UPDATE_SELF, group: 'Administration' },
+  ],
+  admin: [
+    { name: 'Hospital overview', path: '/admin/home', icon: LayoutDashboard, permission: PERMISSIONS.REPORTS_VIEW, group: 'Overview' },
+    { name: 'Doctors', path: '/admin/doctors', icon: Stethoscope, permission: PERMISSIONS.DOCTORS_VIEW, group: 'Care workspace' },
+    { name: 'Employees', path: '/admin/employees', icon: Users, permission: PERMISSIONS.STAFF_VIEW, group: 'Administration' },
+    { name: 'Staff accounts', path: '/admin/staff', icon: UserPlus, permission: PERMISSIONS.STAFF_CREATE, group: 'Administration' },
+    { name: 'Patients', path: '/admin/patients', icon: FileHeart, permission: PERMISSIONS.PATIENTS_VIEW, group: 'Care workspace' },
+    { name: 'Appointments', path: '/admin/appointments', icon: CalendarDays, permission: PERMISSIONS.APPOINTMENTS_VIEW, group: 'Operations' },
+    { name: 'Billing', path: '/admin/billing', icon: WalletCards, permission: PERMISSIONS.BILLING_REPORT, group: 'Operations' },
+  ],
+  super_admin: [
+    { name: 'Control center', path: '/super-admin/home', icon: LayoutDashboard, group: 'Overview' },
+    { name: 'All users', path: '/super-admin/users', icon: Users, group: 'Administration' },
+    { name: 'Administrators', path: '/super-admin/admins', icon: ShieldPlus, permission: PERMISSIONS.STAFF_MANAGE_ROLES, group: 'Administration' },
+    { name: 'Hospitals', path: '/super-admin/hospitals', icon: Building2, permission: PERMISSIONS.ORGANIZATIONS_MANAGE, group: 'Administration' },
+    { name: 'Roles', path: '/super-admin/roles', icon: UserCog, permission: PERMISSIONS.STAFF_MANAGE_ROLES, group: 'Governance' },
+    { name: 'Role grants', path: '/super-admin/permissions', icon: ShieldCheck, permission: PERMISSIONS.STAFF_MANAGE_ROLES, group: 'Governance' },
+    { name: 'System settings', path: '/super-admin/settings', icon: Settings, permission: PERMISSIONS.SETTINGS_MANAGE, group: 'Governance' },
+    { name: 'Feature flags', path: '/super-admin/features', icon: ClipboardCheck, permission: PERMISSIONS.FEATURES_MANAGE, group: 'Governance' },
+    { name: 'Audit logs', path: '/super-admin/audit-logs', icon: FileText, group: 'Governance' },
+    { name: 'System health', path: '/super-admin/system-health', icon: Activity, group: 'Governance' },
+  ],
+  hospital_manager: [
+    { name: 'Operations center', path: '/manager/home', icon: LayoutDashboard, group: 'Overview' },
+    { name: 'Appointments', path: '/manager/appointments', icon: CalendarDays, permission: PERMISSIONS.APPOINTMENTS_VIEW, group: 'Operations' },
+    { name: 'Patients', path: '/manager/patients', icon: FileHeart, permission: PERMISSIONS.PATIENTS_VIEW, group: 'Operations' },
+    { name: 'Doctors', path: '/manager/doctors', icon: Stethoscope, permission: PERMISSIONS.DOCTORS_VIEW, group: 'Operations' },
+    { name: 'Staff', path: '/manager/staff', icon: Users, permission: PERMISSIONS.STAFF_VIEW, group: 'Operations' },
+    { name: 'Reports', path: '/manager/reports', icon: BarChart3, permission: PERMISSIONS.REPORTS_VIEW, group: 'Operations' },
+    { name: 'Departments', path: '/manager/departments', icon: Building2, permission: PERMISSIONS.DEPARTMENTS_VIEW, group: 'Administration' },
+  ],
+  nurse: [
+    { name: 'Nursing overview', path: '/nurse/home', icon: LayoutDashboard, group: 'Overview' },
+    { name: 'Assigned patients', path: '/nurse/patients', icon: Bed, permission: PERMISSIONS.NURSING_VIEW, group: 'Care workspace' },
+    { name: 'Appointments', path: '/nurse/appointments', icon: CalendarDays, permission: PERMISSIONS.NURSING_VIEW, group: 'Care workspace' },
+    { name: 'Record vitals', path: '/nurse/vitals', icon: HeartPulse, permission: PERMISSIONS.NURSING_RECORD_VITALS, group: 'Care workspace' },
+    { name: 'Nursing tasks', path: '/nurse/tasks', icon: ClipboardCheck, permission: PERMISSIONS.NURSING_MANAGE_TASKS, group: 'Operations' },
+  ],
+  pharmacist: [
+    { name: 'Pharmacy overview', path: '/pharmacist/home', icon: LayoutDashboard, group: 'Overview' },
+    { name: 'Prescriptions', path: '/pharmacist/prescriptions', icon: FileCheck2, permission: PERMISSIONS.PHARMACY_VIEW, group: 'Care workspace' },
+    { name: 'Dispensing', path: '/pharmacist/dispensing', icon: Pill, permission: PERMISSIONS.PHARMACY_DISPENSE, group: 'Operations' },
+    { name: 'Inventory', path: '/pharmacist/inventory', icon: PackageSearch, permission: PERMISSIONS.PHARMACY_INVENTORY, group: 'Operations' },
+  ],
+  lab_technician: [
+    { name: 'Lab overview', path: '/lab/home', icon: LayoutDashboard, group: 'Overview' },
+    { name: 'Lab orders', path: '/lab/orders', icon: FlaskConical, permission: PERMISSIONS.LABORATORY_VIEW, group: 'Care workspace' },
+    { name: 'Results', path: '/lab/results', icon: TestTube2, permission: PERMISSIONS.LABORATORY_RESULT, group: 'Operations' },
+  ],
+  radiologist: [
+    { name: 'Imaging overview', path: '/radiologist/home', icon: LayoutDashboard, group: 'Overview' },
+    { name: 'Imaging orders', path: '/radiologist/orders', icon: Microscope, permission: PERMISSIONS.RADIOLOGY_VIEW, group: 'Care workspace' },
+    { name: 'Reports', path: '/radiologist/reports', icon: FileText, permission: PERMISSIONS.RADIOLOGY_REPORT, group: 'Operations' },
+  ],
+  accountant: [
+    { name: 'Finance overview', path: '/accountant/home', icon: LayoutDashboard, group: 'Overview' },
+    { name: 'Invoices', path: '/accountant/invoices', icon: ReceiptIndianRupee, permission: PERMISSIONS.BILLING_VIEW, group: 'Operations' },
+    { name: 'Payments', path: '/accountant/payments', icon: CreditCard, permission: PERMISSIONS.BILLING_VIEW, group: 'Operations' },
+    { name: 'Expenses', path: '/accountant/expenses', icon: WalletCards, permission: PERMISSIONS.ACCOUNTING_RECORD_EXPENSE, group: 'Operations' },
+    { name: 'Reports', path: '/accountant/reports', icon: BarChart3, permission: PERMISSIONS.REPORTS_VIEW, group: 'Operations' },
+  ],
+  insurance_officer: [
+    { name: 'Claims overview', path: '/insurance/home', icon: LayoutDashboard, group: 'Overview' },
+    { name: 'Patients', path: '/insurance/patients', icon: FileHeart, permission: PERMISSIONS.INSURANCE_VIEW, group: 'Care workspace' },
+    { name: 'Claims', path: '/insurance/claims', icon: ClipboardList, permission: PERMISSIONS.INSURANCE_CLAIM, group: 'Operations' },
+    { name: 'Approvals', path: '/insurance/approvals', icon: FileCheck2, permission: PERMISSIONS.INSURANCE_APPROVE, group: 'Operations' },
+  ],
+  ambulance_staff: [
+    { name: 'Transport overview', path: '/ambulance/home', icon: LayoutDashboard, group: 'Overview' },
+    { name: 'Requests', path: '/ambulance/requests', icon: ClipboardList, permission: PERMISSIONS.AMBULANCE_VIEW, group: 'Operations' },
+    { name: 'Trips', path: '/ambulance/trips', icon: Ambulance, permission: PERMISSIONS.AMBULANCE_UPDATE_STATUS, group: 'Operations' },
+    { name: 'Ambulances', path: '/ambulance/vehicles', icon: Hospital, permission: PERMISSIONS.AMBULANCE_VIEW, group: 'Operations' },
+  ],
+}
+
+export const ROLE_LABELS: Record<UserRole, string> = {
+  patient: 'Patient', doctor: 'Doctor', receptionist: 'Receptionist', admin: 'Administrator',
+  super_admin: 'Super Administrator', hospital_manager: 'Hospital Manager', nurse: 'Nurse',
+  pharmacist: 'Pharmacist', lab_technician: 'Lab Technician', radiologist: 'Radiologist',
+  accountant: 'Accountant', insurance_officer: 'Insurance Officer', ambulance_staff: 'Ambulance Staff',
+}
+
+export function visibleMenuItems(portalRole: UserRole, permissions: readonly Permission[]) {
+  return MENU_ITEMS[portalRole].filter((item) => !item.permission || hasPermission(permissions, item.permission))
+}
 
 interface SidebarProps {
   role: UserRole
   portalRole?: UserRole
   permissions?: readonly Permission[]
+  collapsed?: boolean
+  mobileOpen?: boolean
+  onCollapse?: () => void
+  onClose?: () => void
 }
 
-interface MenuItem {
-  name: string
-  path: string
-  permission?: Permission
-}
-
-const MENU_ITEMS: Record<UserRole, readonly MenuItem[]> = {
-  patient: [
-    { name: 'Home', path: '/patient/home' },
-    { name: 'Appointments', path: '/patient/appointments', permission: PERMISSIONS.APPOINTMENTS_VIEW_SELF },
-    { name: 'Prescriptions', path: '/patient/prescriptions', permission: PERMISSIONS.PRESCRIPTIONS_VIEW_SELF },
-    { name: 'Billing', path: '/patient/billing', permission: PERMISSIONS.BILLING_VIEW_SELF },
-    { name: 'Profile', path: '/patient/profile', permission: PERMISSIONS.PATIENTS_VIEW_SELF },
-  ],
-  receptionist: [
-    { name: 'Dashboard', path: '/receptionist/home' },
-    { name: 'Patients', path: '/receptionist/patients', permission: PERMISSIONS.PATIENTS_VIEW },
-    { name: 'Register Patient', path: '/receptionist/register-patient', permission: PERMISSIONS.PATIENTS_CREATE },
-    { name: 'Schedule Appointment', path: '/receptionist/schedule', permission: PERMISSIONS.APPOINTMENTS_CREATE },
-    { name: "Today's Queue", path: '/receptionist/queue', permission: PERMISSIONS.APPOINTMENTS_VIEW },
-    { name: 'Billing', path: '/receptionist/billing', permission: PERMISSIONS.BILLING_COLLECT },
-  ],
-  doctor: [
-    { name: 'Dashboard', path: '/doctor/home' },
-    { name: 'Appointments', path: '/doctor/appointments', permission: PERMISSIONS.APPOINTMENTS_VIEW },
-    { name: 'Patients', path: '/doctor/patients', permission: PERMISSIONS.PATIENTS_VIEW },
-    { name: 'Consultation', path: '/doctor/consultation', permission: PERMISSIONS.CONSULTATIONS_CREATE },
-    { name: 'Profile', path: '/doctor/profile', permission: PERMISSIONS.DOCTORS_UPDATE_SELF },
-  ],
-  admin: [
-    { name: 'Dashboard', path: '/admin/home', permission: PERMISSIONS.REPORTS_VIEW },
-    { name: 'Doctors', path: '/admin/doctors', permission: PERMISSIONS.DOCTORS_VIEW },
-    { name: 'Employees', path: '/admin/employees', permission: PERMISSIONS.STAFF_VIEW },
-    { name: 'Staff Accounts', path: '/admin/staff', permission: PERMISSIONS.STAFF_CREATE },
-    { name: 'Patients', path: '/admin/patients', permission: PERMISSIONS.PATIENTS_VIEW },
-    { name: 'Appointments', path: '/admin/appointments', permission: PERMISSIONS.APPOINTMENTS_VIEW },
-    { name: 'Billing', path: '/admin/billing', permission: PERMISSIONS.BILLING_REPORT },
-  ],
-  super_admin: [
-    { name: 'Dashboard', path: '/super-admin/home' },
-    { name: 'All users', path: '/super-admin/users' },
-    { name: 'Admin management', path: '/super-admin/admins', permission: PERMISSIONS.STAFF_MANAGE_ROLES },
-    { name: 'Hospitals', path: '/super-admin/hospitals', permission: PERMISSIONS.ORGANIZATIONS_MANAGE },
-    { name: 'Roles', path: '/super-admin/roles', permission: PERMISSIONS.STAFF_MANAGE_ROLES },
-    { name: 'Role grants', path: '/super-admin/permissions', permission: PERMISSIONS.STAFF_MANAGE_ROLES },
-    { name: 'System settings', path: '/super-admin/settings', permission: PERMISSIONS.SETTINGS_MANAGE },
-    { name: 'Feature flags', path: '/super-admin/features', permission: PERMISSIONS.FEATURES_MANAGE },
-    { name: 'Audit logs', path: '/super-admin/audit-logs' },
-    { name: 'System health', path: '/super-admin/system-health' },
-  ],
-  hospital_manager: [
-    { name: 'Dashboard', path: '/manager/home' },
-    { name: 'Appointments', path: '/manager/appointments', permission: PERMISSIONS.APPOINTMENTS_VIEW },
-    { name: 'Patients', path: '/manager/patients', permission: PERMISSIONS.PATIENTS_VIEW },
-    { name: 'Doctors', path: '/manager/doctors', permission: PERMISSIONS.DOCTORS_VIEW },
-    { name: 'Staff', path: '/manager/staff', permission: PERMISSIONS.STAFF_VIEW },
-    { name: 'Reports', path: '/manager/reports', permission: PERMISSIONS.REPORTS_VIEW },
-    { name: 'Departments', path: '/manager/departments', permission: PERMISSIONS.DEPARTMENTS_VIEW },
-  ],
-  nurse: [
-    { name: 'Dashboard', path: '/nurse/home' },
-    { name: 'Patients', path: '/nurse/patients', permission: PERMISSIONS.NURSING_VIEW },
-    { name: 'Appointments', path: '/nurse/appointments', permission: PERMISSIONS.NURSING_VIEW },
-    { name: 'Vitals', path: '/nurse/vitals', permission: PERMISSIONS.NURSING_RECORD_VITALS },
-    { name: 'Nursing Tasks', path: '/nurse/tasks', permission: PERMISSIONS.NURSING_MANAGE_TASKS },
-  ],
-  pharmacist: [
-    { name: 'Dashboard', path: '/pharmacist/home' },
-    { name: 'Prescriptions', path: '/pharmacist/prescriptions', permission: PERMISSIONS.PHARMACY_VIEW },
-    { name: 'Dispensing', path: '/pharmacist/dispensing', permission: PERMISSIONS.PHARMACY_DISPENSE },
-    { name: 'Inventory', path: '/pharmacist/inventory', permission: PERMISSIONS.PHARMACY_INVENTORY },
-  ],
-  lab_technician: [
-    { name: 'Dashboard', path: '/lab/home' },
-    { name: 'Lab Orders', path: '/lab/orders', permission: PERMISSIONS.LABORATORY_VIEW },
-    { name: 'Results', path: '/lab/results', permission: PERMISSIONS.LABORATORY_RESULT },
-  ],
-  radiologist: [
-    { name: 'Dashboard', path: '/radiologist/home' },
-    { name: 'Imaging Orders', path: '/radiologist/orders', permission: PERMISSIONS.RADIOLOGY_VIEW },
-    { name: 'Reports', path: '/radiologist/reports', permission: PERMISSIONS.RADIOLOGY_REPORT },
-  ],
-  accountant: [
-    { name: 'Dashboard', path: '/accountant/home' },
-    { name: 'Invoices', path: '/accountant/invoices', permission: PERMISSIONS.BILLING_VIEW },
-    { name: 'Payments', path: '/accountant/payments', permission: PERMISSIONS.BILLING_VIEW },
-    { name: 'Expenses', path: '/accountant/expenses', permission: PERMISSIONS.ACCOUNTING_RECORD_EXPENSE },
-    { name: 'Reports', path: '/accountant/reports', permission: PERMISSIONS.REPORTS_VIEW },
-  ],
-  insurance_officer: [
-    { name: 'Dashboard', path: '/insurance/home' },
-    { name: 'Patients', path: '/insurance/patients', permission: PERMISSIONS.INSURANCE_VIEW },
-    { name: 'Claims', path: '/insurance/claims', permission: PERMISSIONS.INSURANCE_CLAIM },
-    { name: 'Approvals', path: '/insurance/approvals', permission: PERMISSIONS.INSURANCE_APPROVE },
-  ],
-  ambulance_staff: [
-    { name: 'Dashboard', path: '/ambulance/home' },
-    { name: 'Requests', path: '/ambulance/requests', permission: PERMISSIONS.AMBULANCE_VIEW },
-    { name: 'Trips', path: '/ambulance/trips', permission: PERMISSIONS.AMBULANCE_UPDATE_STATUS },
-    { name: 'Ambulances', path: '/ambulance/vehicles', permission: PERMISSIONS.AMBULANCE_VIEW },
-  ],
-}
-
-export default function Sidebar({ role, portalRole = role, permissions = [] }: SidebarProps) {
+export default function Sidebar({ role, portalRole = role, permissions = [], collapsed = false, mobileOpen = false, onCollapse, onClose }: SidebarProps) {
   const pathname = usePathname()
-  const portalItems = MENU_ITEMS[portalRole].filter(
-    (item) => !item.permission || hasPermission(permissions, item.permission),
-  )
+  const portalItems = visibleMenuItems(portalRole, permissions)
   const items = portalRole === role
     ? portalItems
-    : [{ name: 'Back to my portal', path: ROLE_HOME[role] }, ...portalItems]
+    : [{ name: 'Back to my portal', path: ROLE_HOME[role], icon: ChevronLeft, group: 'Overview' as const }, ...portalItems]
+  const groups = Array.from(new Set(items.map((item) => item.group || 'Operations')))
 
   return (
-    <aside className="w-64 h-full bg-[#0A192F] text-white flex flex-col shadow-lg">
-      <div className="p-6 text-2xl font-bold border-b border-gray-700 tracking-wide">
-        HMS Portal
+    <aside className={cn(
+      'hms-sidebar fixed inset-y-0 left-0 z-50 flex h-dvh flex-col overflow-hidden bg-[var(--hms-sidebar)] text-white shadow-2xl transition-all duration-200 ease-premium lg:relative lg:z-20 lg:translate-x-0 lg:shadow-none',
+      collapsed ? 'w-[5.25rem]' : 'w-[17.5rem]', mobileOpen ? 'translate-x-0' : '-translate-x-full',
+    )} aria-label={`${ROLE_LABELS[portalRole]} navigation`}>
+      <div className={cn('flex h-[4.5rem] shrink-0 items-center border-b border-white/10', collapsed ? 'justify-center px-3' : 'gap-3 px-5')}>
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[#0b7767] shadow-sm"><HeartPulse aria-hidden="true" className="h-5 w-5" /></div>
+        {!collapsed && <div className="min-w-0"><p className="truncate text-[0.98rem] font-bold tracking-tight">HMS Platform</p><p className="truncate text-[0.68rem] font-medium uppercase tracking-[0.15em] text-emerald-100/60">Care operations</p></div>}
+        <button type="button" onClick={onClose} className="ml-auto rounded-lg p-2 text-white/70 hover:bg-white/10 hover:text-white lg:hidden" aria-label="Close navigation"><X className="h-5 w-5" /></button>
       </div>
-      <nav className="flex-1 mt-6 overflow-y-auto">
-        <ul className="space-y-2 px-4">
-          {items.map((item) => {
-            const isActive = pathname === item.path || pathname.startsWith(`${item.path}/`)
-            return (
-              <li key={item.path}>
-                <Link
-                  href={item.path}
-                  className={`block px-4 py-3 rounded-lg transition-colors duration-200 ${
-                    isActive
-                      ? 'bg-blue-600 text-white font-medium shadow-md'
-                      : 'text-gray-300 hover:bg-[#112240] hover:text-white'
-                  }`}
-                >
-                  {item.name}
-                </Link>
-              </li>
-            )
-          })}
-        </ul>
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-4">
+        {groups.map((group) => <section key={group} className="mb-5">
+          {!collapsed && <h2 className="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.16em] text-emerald-100/45">{group}</h2>}
+          <ul className="space-y-1">{items.filter((item) => (item.group || 'Operations') === group).map((item) => {
+            const active = pathname === item.path || pathname.startsWith(`${item.path}/`)
+            const Icon = item.icon
+            return <li key={item.path}><Link href={item.path} onClick={onClose} title={collapsed ? item.name : undefined} aria-current={active ? 'page' : undefined} className={cn('group relative flex min-h-11 items-center rounded-xl text-sm font-medium', collapsed ? 'justify-center px-2' : 'gap-3 px-3', active ? 'bg-white text-[#0b5f55] shadow-sm' : 'text-emerald-50/72 hover:bg-white/10 hover:text-white')}>
+              {active && !collapsed && <span className="absolute -left-3 h-6 w-1 rounded-r-full bg-emerald-300" />}
+              <Icon aria-hidden="true" className={cn('h-[1.1rem] w-[1.1rem] shrink-0', active ? 'text-[#0b7767]' : 'text-emerald-100/65 group-hover:text-emerald-100')} />
+              {!collapsed && <span className="truncate">{item.name}</span>}
+            </Link></li>
+          })}</ul>
+        </section>)}
       </nav>
-      <div className="p-4 border-t border-gray-700">
-        <button
-          onClick={() => logoutAction()}
-          className="w-full text-left px-4 py-2 mb-4 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded-lg transition-colors duration-200 flex items-center gap-2"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-          Logout
-        </button>
-        <div className="text-sm text-gray-500 text-center">
-          Role: <span className="capitalize text-gray-400">{role.replaceAll('_', ' ')}</span>
-        </div>
+      <div className="shrink-0 border-t border-white/10 p-3">
+        <button type="button" onClick={onCollapse} className="mb-2 hidden w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-emerald-50/60 hover:bg-white/10 hover:text-white lg:flex" aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}>{collapsed ? <ChevronRight className="h-4 w-4" /> : <><ChevronLeft className="h-4 w-4" /><span>Collapse menu</span></>}</button>
+        <button type="button" onClick={() => logoutAction()} className={cn('flex min-h-11 w-full items-center rounded-xl text-sm font-semibold text-rose-200 hover:bg-rose-500/10 hover:text-rose-100', collapsed ? 'justify-center px-2' : 'gap-3 px-3')} title={collapsed ? 'Sign out' : undefined}><LogOut aria-hidden="true" className="h-[1.1rem] w-[1.1rem]" />{!collapsed && <span>Sign out</span>}</button>
       </div>
     </aside>
   )

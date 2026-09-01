@@ -1,360 +1,75 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
+import { AlertCircle, Building2, CheckCircle2, Flag, Settings2, ShieldCheck, type LucideIcon } from 'lucide-react'
 
 import {
-  createFeatureFlagAction,
-  createOrganizationAction,
-  createRoleGrantAction,
-  createSystemSettingAction,
-  deleteRoleGrantAction,
-  setFeatureFlagEnabledAction,
-  setOrganizationActiveAction,
-  updateFeatureFlagDescriptionAction,
-  updateOrganizationAction,
-  updateSystemSettingAction,
+  createFeatureFlagAction, createOrganizationAction, createRoleGrantAction, createSystemSettingAction,
+  deleteRoleGrantAction, setFeatureFlagEnabledAction, setOrganizationActiveAction,
+  updateFeatureFlagDescriptionAction, updateOrganizationAction, updateSystemSettingAction,
 } from '@/app/actions/superAdmin'
 import SubmitButton from '@/components/SubmitButton'
+import { EmptyState, StatusBadge } from '@/components/ui/HmsUI'
 import { PERMISSIONS } from '@/lib/permissions'
 
-export interface OrganizationSummary {
-  id: number
-  name: string
-  address: string | null
-  contact_email: string | null
-  contact_phone: string | null
-  is_active: boolean
-  created_at: string
-}
+export interface OrganizationSummary { id: number; name: string; address: string | null; contact_email: string | null; contact_phone: string | null; is_active: boolean; created_at: string }
+export interface SystemSettingSummary { id: number; setting_key: string; setting_value: string | null; description: string | null; updated_at: string; updated_by: number | null }
+export interface RoleGrantSummary { id: number; role: string; permission: string; description: string | null; created_at: string; created_by: number }
+export interface FeatureFlagSummary { id: number; feature_name: string; is_enabled: boolean; description: string | null; updated_at: string; updated_by: number | null }
 
-export interface SystemSettingSummary {
-  id: number
-  setting_key: string
-  setting_value: string | null
-  description: string | null
-  updated_at: string
-  updated_by: number | null
-}
-
-export interface RoleGrantSummary {
-  id: number
-  role: string
-  permission: string
-  description: string | null
-  created_at: string
-  created_by: number
-}
-
-export interface FeatureFlagSummary {
-  id: number
-  feature_name: string
-  is_enabled: boolean
-  description: string | null
-  updated_at: string
-  updated_by: number | null
-}
-
-const ROLE_OPTIONS = [
-  'admin',
-  'hospital_manager',
-  'doctor',
-  'receptionist',
-  'nurse',
-  'pharmacist',
-  'lab_technician',
-  'radiologist',
-  'accountant',
-  'insurance_officer',
-  'ambulance_staff',
-] as const
-
+const ROLE_OPTIONS = ['admin', 'hospital_manager', 'doctor', 'receptionist', 'nurse', 'pharmacist', 'lab_technician', 'radiologist', 'accountant', 'insurance_officer', 'ambulance_staff'] as const
 const PERMISSION_OPTIONS = Object.values(PERMISSIONS).sort()
+const labelClass = 'mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-200'
+const tableHeadClass = 'px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400'
+const tableCellClass = 'px-5 py-4 align-top text-sm text-slate-600 dark:text-slate-300'
 
 function Feedback({ error, success }: { error: string; success: string }) {
-  if (error) return <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>
-  if (success) return <p className="rounded-lg bg-green-50 p-3 text-sm text-green-700">{success}</p>
-  return null
+  if (!error && !success) return null
+  const isError = Boolean(error)
+  return <div aria-live="polite" role={isError ? 'alert' : 'status'} className={`flex items-start gap-3 rounded-xl border p-4 text-sm ${isError ? 'border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200' : 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200'}`}>
+    {isError ? <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> : <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />}<span>{error || success}</span>
+  </div>
+}
+
+function FormCard({ icon: Icon, title, description, children }: { icon: LucideIcon; title: string; description: string; children: ReactNode }) {
+  return <section className="hms-card overflow-hidden"><div className="flex items-start gap-3 border-b border-slate-200 px-5 py-5 dark:border-slate-800 sm:px-6"><span className="rounded-xl bg-brand-50 p-2.5 text-brand-700 dark:bg-brand-950 dark:text-brand-300"><Icon className="h-5 w-5" /></span><div><h2 className="text-lg font-bold text-slate-900 dark:text-slate-50">{title}</h2><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{description}</p></div></div><div className="p-5 sm:p-6">{children}</div></section>
 }
 
 export function OrganizationsPanel({ organizations }: { organizations: OrganizationSummary[] }) {
-  const formRef = useRef<HTMLFormElement>(null)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
-
-  async function create(formData: FormData) {
-    setError('')
-    setSuccess('')
-    const result = await createOrganizationAction(formData)
-    if (result.error) return setError(result.error)
-    formRef.current?.reset()
-    setSuccess('Organization created successfully.')
-  }
-
-  async function toggle(formData: FormData) {
-    setError('')
-    setSuccess('')
-    const result = await setOrganizationActiveAction(formData)
-    if (result.error) return setError(result.error)
-    setSuccess('Organization status updated.')
-  }
-
-  async function update(formData: FormData) {
-    setError('')
-    setSuccess('')
-    const result = await updateOrganizationAction(formData)
-    if (result.error) return setError(result.error)
-    setSuccess('Organization details updated.')
-  }
-
-  return (
-    <div className="space-y-6">
-      <Feedback error={error} success={success} />
-      <section className="rounded-xl border bg-white p-6 shadow-sm">
-        <h2 className="text-xl font-semibold text-gray-900">Create organization</h2>
-        <form ref={formRef} action={create} className="mt-5 grid gap-4 md:grid-cols-2">
-          <input name="name" required maxLength={150} placeholder="Organization name" className="rounded-lg border p-3" />
-          <input name="contact_email" type="email" placeholder="Contact email" className="rounded-lg border p-3" />
-          <input name="contact_phone" maxLength={20} placeholder="Contact phone" className="rounded-lg border p-3" />
-          <input name="address" placeholder="Address" className="rounded-lg border p-3" />
-          <SubmitButton className="rounded-lg bg-blue-600 px-5 py-3 text-white hover:bg-blue-700 md:col-span-2">
-            Create Organization
-          </SubmitButton>
-        </form>
-      </section>
-
-      <section className="overflow-x-auto rounded-xl border bg-white shadow-sm">
-        <table className="min-w-full divide-y text-sm">
-          <thead className="bg-gray-50 text-left text-gray-600">
-            <tr><th className="p-4">Name</th><th className="p-4">Contact</th><th className="p-4">Address</th><th className="p-4">Status</th><th className="p-4">Action</th></tr>
-          </thead>
-          <tbody className="divide-y">
-            {organizations.length === 0 ? (
-              <tr><td colSpan={5} className="p-8 text-center text-gray-500">No organizations created yet. Use the form above to add one.</td></tr>
-            ) : organizations.map((organization) => (
-              <tr key={organization.id}>
-                <td colSpan={3} className="p-4">
-                  <form action={update} className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                    <input type="hidden" name="id" value={organization.id} />
-                    <input name="name" required maxLength={150} defaultValue={organization.name} className="rounded-lg border p-2" aria-label="Organization name" />
-                    <input name="contact_email" type="email" defaultValue={organization.contact_email || ''} placeholder="Contact email" className="rounded-lg border p-2" />
-                    <input name="contact_phone" maxLength={20} defaultValue={organization.contact_phone || ''} placeholder="Contact phone" className="rounded-lg border p-2" />
-                    <input name="address" defaultValue={organization.address || ''} placeholder="Address" className="rounded-lg border p-2" />
-                    <SubmitButton className="rounded-lg border border-blue-600 px-3 py-2 text-blue-700 hover:bg-blue-50 xl:col-start-4">Save details</SubmitButton>
-                  </form>
-                </td>
-                <td className="p-4">{organization.is_active ? 'Active' : 'Inactive'}</td>
-                <td className="p-4">
-                  <form action={toggle}>
-                    <input type="hidden" name="id" value={organization.id} />
-                    <input type="hidden" name="is_active" value={String(!organization.is_active)} />
-                    <SubmitButton className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50">
-                      {organization.is_active ? 'Deactivate' : 'Activate'}
-                    </SubmitButton>
-                  </form>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
-    </div>
-  )
+  const formRef = useRef<HTMLFormElement>(null); const [error, setError] = useState(''); const [success, setSuccess] = useState('')
+  async function create(formData: FormData) { setError(''); setSuccess(''); const result = await createOrganizationAction(formData); if (result.error) return setError(result.error); formRef.current?.reset(); setSuccess('Organization created successfully.') }
+  async function toggle(formData: FormData) { setError(''); setSuccess(''); const result = await setOrganizationActiveAction(formData); if (result.error) return setError(result.error); setSuccess('Organization status updated.') }
+  async function update(formData: FormData) { setError(''); setSuccess(''); const result = await updateOrganizationAction(formData); if (result.error) return setError(result.error); setSuccess('Organization details updated.') }
+  return <div className="space-y-6"><Feedback error={error} success={success} />
+    <FormCard icon={Building2} title="Create hospital organization" description="Add a hospital workspace and its primary contact information."><form ref={formRef} action={create} className="grid gap-4 md:grid-cols-2"><label><span className={labelClass}>Organization name</span><input name="name" required maxLength={150} placeholder="e.g. City Care Hospital" className="hms-input" /></label><label><span className={labelClass}>Contact email</span><input name="contact_email" type="email" placeholder="operations@hospital.com" className="hms-input" /></label><label><span className={labelClass}>Contact phone</span><input name="contact_phone" maxLength={20} placeholder="Primary phone number" className="hms-input" /></label><label><span className={labelClass}>Address</span><input name="address" placeholder="Hospital address" className="hms-input" /></label><div className="flex justify-end md:col-span-2"><SubmitButton>Create organization</SubmitButton></div></form></FormCard>
+    <section className="hms-card overflow-hidden"><div className="border-b border-slate-200 px-5 py-4 dark:border-slate-800"><h2 className="font-bold text-slate-900 dark:text-slate-50">Hospital organizations</h2><p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{organizations.length} organization{organizations.length === 1 ? '' : 's'} registered</p></div>{organizations.length === 0 ? <EmptyState title="No organizations yet" description="Create the first hospital organization using the form above." /> : <div className="overflow-x-auto"><table className="min-w-full"><thead className="bg-slate-50/80 dark:bg-slate-900/60"><tr><th className={tableHeadClass}>Organization details</th><th className={tableHeadClass}>Status</th><th className={tableHeadClass}>Access</th></tr></thead><tbody className="divide-y divide-slate-200 dark:divide-slate-800">{organizations.map(organization => <tr key={organization.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-900/50"><td className={tableCellClass}><form action={update} className="grid min-w-[680px] gap-3 md:grid-cols-2 xl:grid-cols-4"><input type="hidden" name="id" value={organization.id} /><input name="name" aria-label="Organization name" required maxLength={150} defaultValue={organization.name} className="hms-input" /><input name="contact_email" aria-label="Contact email" type="email" defaultValue={organization.contact_email || ''} placeholder="Contact email" className="hms-input" /><input name="contact_phone" aria-label="Contact phone" maxLength={20} defaultValue={organization.contact_phone || ''} placeholder="Contact phone" className="hms-input" /><input name="address" aria-label="Address" defaultValue={organization.address || ''} placeholder="Address" className="hms-input" /><div className="xl:col-span-4"><SubmitButton className="hms-button hms-button-secondary">Save details</SubmitButton></div></form></td><td className={tableCellClass}><StatusBadge status={organization.is_active ? 'Active' : 'Inactive'} /></td><td className={tableCellClass}><form action={toggle}><input type="hidden" name="id" value={organization.id} /><input type="hidden" name="is_active" value={String(!organization.is_active)} /><SubmitButton className="hms-button hms-button-secondary">{organization.is_active ? 'Deactivate' : 'Activate'}</SubmitButton></form></td></tr>)}</tbody></table></div>}</section>
+  </div>
 }
 
 export function SystemSettingsPanel({ settings }: { settings: SystemSettingSummary[] }) {
-  const formRef = useRef<HTMLFormElement>(null)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
-
-  async function create(formData: FormData) {
-    setError('')
-    setSuccess('')
-    const result = await createSystemSettingAction(formData)
-    if (result.error) return setError(result.error)
-    formRef.current?.reset()
-    setSuccess('System setting created.')
-  }
-
-  async function update(formData: FormData) {
-    setError('')
-    setSuccess('')
-    const result = await updateSystemSettingAction(formData)
-    if (result.error) return setError(result.error)
-    setSuccess('System setting updated.')
-  }
-
-  return (
-    <div className="space-y-6">
-      <Feedback error={error} success={success} />
-      <section className="rounded-xl border bg-white p-6 shadow-sm">
-        <h2 className="text-xl font-semibold text-gray-900">Create setting</h2>
-        <form ref={formRef} action={create} className="mt-5 grid gap-4 md:grid-cols-3">
-          <input name="setting_key" required maxLength={100} placeholder="Setting key" className="rounded-lg border p-3" />
-          <input name="setting_value" placeholder="Value" className="rounded-lg border p-3" />
-          <input name="description" placeholder="Description" className="rounded-lg border p-3" />
-          <SubmitButton className="rounded-lg bg-blue-600 px-5 py-3 text-white hover:bg-blue-700 md:col-span-3">
-            Create Setting
-          </SubmitButton>
-        </form>
-      </section>
-
-      <div className="space-y-3">
-        {settings.length === 0 ? (
-          <div className="rounded-xl border bg-white p-8 text-center text-gray-500 shadow-sm">No settings created yet.</div>
-        ) : settings.map((setting) => (
-          <form key={setting.id} action={update} className="grid gap-3 rounded-xl border bg-white p-5 shadow-sm md:grid-cols-[minmax(12rem,1fr)_2fr_2fr_auto]">
-            <input type="hidden" name="id" value={setting.id} />
-            <div>
-              <p className="font-semibold text-gray-900">{setting.setting_key}</p>
-              <p className="text-xs text-gray-500">Updated {new Date(setting.updated_at).toLocaleString()}</p>
-            </div>
-            <input name="setting_value" defaultValue={setting.setting_value || ''} placeholder="Value" className="rounded-lg border p-3" />
-            <input name="description" defaultValue={setting.description || ''} placeholder="Description" className="rounded-lg border p-3" />
-            <SubmitButton className="rounded-lg border border-blue-600 px-4 py-2 text-blue-700 hover:bg-blue-50">Save</SubmitButton>
-          </form>
-        ))}
-      </div>
-    </div>
-  )
+  const formRef = useRef<HTMLFormElement>(null); const [error, setError] = useState(''); const [success, setSuccess] = useState('')
+  async function create(formData: FormData) { setError(''); setSuccess(''); const result = await createSystemSettingAction(formData); if (result.error) return setError(result.error); formRef.current?.reset(); setSuccess('System setting created.') }
+  async function update(formData: FormData) { setError(''); setSuccess(''); const result = await updateSystemSettingAction(formData); if (result.error) return setError(result.error); setSuccess('System setting updated.') }
+  return <div className="space-y-6"><Feedback error={error} success={success} /><FormCard icon={Settings2} title="Create configuration value" description="Define a platform-wide setting. Use stable, descriptive keys."><form ref={formRef} action={create} className="grid gap-4 md:grid-cols-3"><label><span className={labelClass}>Setting key</span><input name="setting_key" required maxLength={100} placeholder="appointment.reminder_hours" className="hms-input font-mono" /></label><label><span className={labelClass}>Value</span><input name="setting_value" placeholder="Configuration value" className="hms-input" /></label><label><span className={labelClass}>Description</span><input name="description" placeholder="What this setting controls" className="hms-input" /></label><div className="flex justify-end md:col-span-3"><SubmitButton>Create setting</SubmitButton></div></form></FormCard>
+    <section className="space-y-3"><div className="flex items-center justify-between"><h2 className="font-bold text-slate-900 dark:text-slate-50">Configuration registry</h2><span className="text-sm text-slate-500 dark:text-slate-400">{settings.length} settings</span></div>{settings.length === 0 ? <div className="hms-card"><EmptyState title="No settings configured" description="New platform settings will appear here." /></div> : settings.map(setting => <form key={setting.id} action={update} className="hms-card grid gap-4 p-5 lg:grid-cols-[minmax(14rem,1fr)_2fr_2fr_auto] lg:items-end"><input type="hidden" name="id" value={setting.id} /><div><p className="break-all font-mono text-sm font-bold text-brand-700 dark:text-brand-300">{setting.setting_key}</p><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Updated {new Date(setting.updated_at).toLocaleString()}</p></div><label><span className={labelClass}>Value</span><input name="setting_value" defaultValue={setting.setting_value || ''} placeholder="Value" className="hms-input" /></label><label><span className={labelClass}>Description</span><input name="description" defaultValue={setting.description || ''} placeholder="Description" className="hms-input" /></label><SubmitButton className="hms-button hms-button-secondary">Save changes</SubmitButton></form>)}</section>
+  </div>
 }
 
 export function RoleGrantsPanel({ grants }: { grants: RoleGrantSummary[] }) {
-  const formRef = useRef<HTMLFormElement>(null)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
-
-  async function create(formData: FormData) {
-    setError('')
-    setSuccess('')
-    const result = await createRoleGrantAction(formData)
-    if (result.error) return setError(result.error)
-    formRef.current?.reset()
-    setSuccess('Role permission granted.')
-  }
-
-  async function remove(formData: FormData) {
-    setError('')
-    setSuccess('')
-    const result = await deleteRoleGrantAction(formData)
-    if (result.error) return setError(result.error)
-    setSuccess('Role permission removed.')
-  }
-
-  return (
-    <div className="space-y-6">
-      <Feedback error={error} success={success} />
-      <section className="rounded-xl border bg-white p-6 shadow-sm">
-        <h2 className="text-xl font-semibold text-gray-900">Grant permission to a role</h2>
-        <form ref={formRef} action={create} className="mt-5 grid gap-4 md:grid-cols-3">
-          <select name="role" required className="rounded-lg border bg-white p-3">
-            {ROLE_OPTIONS.map((role) => <option key={role} value={role}>{role.replaceAll('_', ' ')}</option>)}
-          </select>
-          <select name="permission" required className="rounded-lg border bg-white p-3">
-            {PERMISSION_OPTIONS.map((permission) => <option key={permission} value={permission}>{permission}</option>)}
-          </select>
-          <input name="description" placeholder="Description (optional)" className="rounded-lg border p-3" />
-          <SubmitButton className="rounded-lg bg-blue-600 px-5 py-3 text-white hover:bg-blue-700 md:col-span-3">Grant Permission</SubmitButton>
-        </form>
-      </section>
-
-      <section className="overflow-x-auto rounded-xl border bg-white shadow-sm">
-        <table className="min-w-full divide-y text-sm">
-          <thead className="bg-gray-50 text-left text-gray-600"><tr><th className="p-4">Role</th><th className="p-4">Permission</th><th className="p-4">Description</th><th className="p-4">Action</th></tr></thead>
-          <tbody className="divide-y">
-            {grants.length === 0 ? (
-              <tr><td colSpan={4} className="p-8 text-center text-gray-500">No dynamic role grants created yet.</td></tr>
-            ) : grants.map((grant) => (
-              <tr key={grant.id}>
-                <td className="p-4 capitalize">{grant.role.replaceAll('_', ' ')}</td>
-                <td className="p-4 font-mono text-xs">{grant.permission}</td>
-                <td className="p-4 text-gray-600">{grant.description || '—'}</td>
-                <td className="p-4">
-                  <form action={remove}>
-                    <input type="hidden" name="id" value={grant.id} />
-                    <SubmitButton className="rounded-lg border border-red-300 px-3 py-2 text-red-700 hover:bg-red-50">Remove</SubmitButton>
-                  </form>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
-    </div>
-  )
+  const formRef = useRef<HTMLFormElement>(null); const [error, setError] = useState(''); const [success, setSuccess] = useState('')
+  async function create(formData: FormData) { setError(''); setSuccess(''); const result = await createRoleGrantAction(formData); if (result.error) return setError(result.error); formRef.current?.reset(); setSuccess('Role permission granted.') }
+  async function remove(formData: FormData) { setError(''); setSuccess(''); const result = await deleteRoleGrantAction(formData); if (result.error) return setError(result.error); setSuccess('Role permission removed.') }
+  return <div className="space-y-6"><Feedback error={error} success={success} /><FormCard icon={ShieldCheck} title="Grant role permission" description="Extend a hospital role with one carefully scoped capability."><form ref={formRef} action={create} className="grid gap-4 md:grid-cols-3"><label><span className={labelClass}>Hospital role</span><select name="role" required className="hms-input capitalize">{ROLE_OPTIONS.map(role => <option key={role} value={role}>{role.replaceAll('_', ' ')}</option>)}</select></label><label><span className={labelClass}>Permission</span><select name="permission" required className="hms-input font-mono text-sm">{PERMISSION_OPTIONS.map(permission => <option key={permission} value={permission}>{permission}</option>)}</select></label><label><span className={labelClass}>Business reason</span><input name="description" placeholder="Optional description" className="hms-input" /></label><div className="flex justify-end md:col-span-3"><SubmitButton>Grant permission</SubmitButton></div></form></FormCard>
+    <section className="hms-card overflow-hidden"><div className="border-b border-slate-200 px-5 py-4 dark:border-slate-800"><h2 className="font-bold text-slate-900 dark:text-slate-50">Active role grants</h2><p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Dynamic permissions supplement the built-in role policy.</p></div>{grants.length === 0 ? <EmptyState title="No dynamic grants" description="All roles currently use their default permission policy." /> : <div className="overflow-x-auto"><table className="min-w-full"><thead className="bg-slate-50/80 dark:bg-slate-900/60"><tr><th className={tableHeadClass}>Role</th><th className={tableHeadClass}>Permission</th><th className={tableHeadClass}>Description</th><th className={tableHeadClass}>Action</th></tr></thead><tbody className="divide-y divide-slate-200 dark:divide-slate-800">{grants.map(grant => <tr key={grant.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-900/50"><td className={`${tableCellClass} font-semibold capitalize text-slate-900 dark:text-slate-100`}>{grant.role.replaceAll('_', ' ')}</td><td className={`${tableCellClass} font-mono text-xs`}>{grant.permission}</td><td className={tableCellClass}>{grant.description || '—'}</td><td className={tableCellClass}><form action={remove}><input type="hidden" name="id" value={grant.id} /><SubmitButton className="hms-button border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300">Remove</SubmitButton></form></td></tr>)}</tbody></table></div>}</section>
+  </div>
 }
 
 export function FeatureFlagsPanel({ flags }: { flags: FeatureFlagSummary[] }) {
-  const formRef = useRef<HTMLFormElement>(null)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
-
-  async function create(formData: FormData) {
-    setError('')
-    setSuccess('')
-    const result = await createFeatureFlagAction(formData)
-    if (result.error) return setError(result.error)
-    formRef.current?.reset()
-    setSuccess('Feature flag created.')
-  }
-
-  async function toggle(formData: FormData) {
-    setError('')
-    setSuccess('')
-    const result = await setFeatureFlagEnabledAction(formData)
-    if (result.error) return setError(result.error)
-    setSuccess('Feature flag updated.')
-  }
-
-  async function updateDescription(formData: FormData) {
-    setError('')
-    setSuccess('')
-    const result = await updateFeatureFlagDescriptionAction(formData)
-    if (result.error) return setError(result.error)
-    setSuccess('Feature flag description updated.')
-  }
-
-  return (
-    <div className="space-y-6">
-      <Feedback error={error} success={success} />
-      <section className="rounded-xl border bg-white p-6 shadow-sm">
-        <h2 className="text-xl font-semibold text-gray-900">Create feature flag</h2>
-        <form ref={formRef} action={create} className="mt-5 grid gap-4 md:grid-cols-3">
-          <input name="feature_name" required maxLength={100} placeholder="Feature name" className="rounded-lg border p-3" />
-          <input name="description" placeholder="Description" className="rounded-lg border p-3" />
-          <label className="flex items-center gap-2 rounded-lg border p-3"><input name="is_enabled" type="checkbox" /> Enabled initially</label>
-          <SubmitButton className="rounded-lg bg-blue-600 px-5 py-3 text-white hover:bg-blue-700 md:col-span-3">Create Feature Flag</SubmitButton>
-        </form>
-      </section>
-
-      <section className="overflow-x-auto rounded-xl border bg-white shadow-sm">
-        <table className="min-w-full divide-y text-sm">
-          <thead className="bg-gray-50 text-left text-gray-600"><tr><th className="p-4">Feature</th><th className="p-4">Description</th><th className="p-4">Status</th><th className="p-4">Action</th></tr></thead>
-          <tbody className="divide-y">
-            {flags.length === 0 ? (
-              <tr><td colSpan={4} className="p-8 text-center text-gray-500">No feature flags created yet.</td></tr>
-            ) : flags.map((flag) => (
-              <tr key={flag.id}>
-                <td className="p-4 font-medium text-gray-900">{flag.feature_name}</td>
-                <td className="p-4 text-gray-600">
-                  <form action={updateDescription} className="flex min-w-72 gap-2">
-                    <input type="hidden" name="id" value={flag.id} />
-                    <input name="description" defaultValue={flag.description || ''} placeholder="Description" className="min-w-0 flex-1 rounded-lg border p-2" />
-                    <SubmitButton className="rounded-lg border px-3 py-2 hover:bg-gray-50">Save</SubmitButton>
-                  </form>
-                </td>
-                <td className="p-4">{flag.is_enabled ? 'Enabled' : 'Disabled'}</td>
-                <td className="p-4">
-                  <form action={toggle}>
-                    <input type="hidden" name="id" value={flag.id} />
-                    <input type="hidden" name="is_enabled" value={String(!flag.is_enabled)} />
-                    <SubmitButton className="rounded-lg border px-3 py-2 hover:bg-gray-50">{flag.is_enabled ? 'Disable' : 'Enable'}</SubmitButton>
-                  </form>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
-    </div>
-  )
+  const formRef = useRef<HTMLFormElement>(null); const [error, setError] = useState(''); const [success, setSuccess] = useState('')
+  async function create(formData: FormData) { setError(''); setSuccess(''); const result = await createFeatureFlagAction(formData); if (result.error) return setError(result.error); formRef.current?.reset(); setSuccess('Feature flag created.') }
+  async function toggle(formData: FormData) { setError(''); setSuccess(''); const result = await setFeatureFlagEnabledAction(formData); if (result.error) return setError(result.error); setSuccess('Feature flag updated.') }
+  async function updateDescription(formData: FormData) { setError(''); setSuccess(''); const result = await updateFeatureFlagDescriptionAction(formData); if (result.error) return setError(result.error); setSuccess('Feature flag description updated.') }
+  return <div className="space-y-6"><Feedback error={error} success={success} /><FormCard icon={Flag} title="Create feature flag" description="Prepare controlled platform releases without exposing unfinished workflows."><form ref={formRef} action={create} className="grid gap-4 md:grid-cols-2"><label><span className={labelClass}>Feature name</span><input name="feature_name" required maxLength={100} placeholder="e.g. advanced_reporting" className="hms-input font-mono" /></label><label><span className={labelClass}>Description</span><input name="description" placeholder="What this flag controls" className="hms-input" /></label><label className="flex min-h-12 items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"><input name="is_enabled" type="checkbox" className="h-4 w-4 accent-brand-700" />Enable immediately</label><div className="flex justify-end"><SubmitButton>Create feature flag</SubmitButton></div></form></FormCard>
+    <section className="hms-card overflow-hidden"><div className="border-b border-slate-200 px-5 py-4 dark:border-slate-800"><h2 className="font-bold text-slate-900 dark:text-slate-50">Release controls</h2><p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Review and change feature availability across the platform.</p></div>{flags.length === 0 ? <EmptyState title="No feature flags" description="Create a flag to begin managing staged releases." /> : <div className="overflow-x-auto"><table className="min-w-full"><thead className="bg-slate-50/80 dark:bg-slate-900/60"><tr><th className={tableHeadClass}>Feature</th><th className={tableHeadClass}>Description</th><th className={tableHeadClass}>Status</th><th className={tableHeadClass}>Action</th></tr></thead><tbody className="divide-y divide-slate-200 dark:divide-slate-800">{flags.map(flag => <tr key={flag.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-900/50"><td className={`${tableCellClass} font-mono font-semibold text-slate-900 dark:text-slate-100`}>{flag.feature_name}</td><td className={tableCellClass}><form action={updateDescription} className="flex min-w-[340px] gap-2"><input type="hidden" name="id" value={flag.id} /><input name="description" aria-label={`Description for ${flag.feature_name}`} defaultValue={flag.description || ''} placeholder="Description" className="hms-input" /><SubmitButton className="hms-button hms-button-secondary">Save</SubmitButton></form></td><td className={tableCellClass}><StatusBadge status={flag.is_enabled ? 'Enabled' : 'Disabled'} /></td><td className={tableCellClass}><form action={toggle}><input type="hidden" name="id" value={flag.id} /><input type="hidden" name="is_enabled" value={String(!flag.is_enabled)} /><SubmitButton className="hms-button hms-button-secondary">{flag.is_enabled ? 'Disable' : 'Enable'}</SubmitButton></form></td></tr>)}</tbody></table></div>}</section>
+  </div>
 }

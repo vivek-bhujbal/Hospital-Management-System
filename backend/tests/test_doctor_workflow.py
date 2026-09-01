@@ -98,7 +98,7 @@ def test_doctor_patient_directory_and_history_are_assignment_scoped(
     assert missing_history.status_code == 404
 
 
-def test_only_own_checked_in_appointment_can_be_started(
+def test_only_own_confirmed_or_checked_in_appointment_can_be_started(
     client, db, create_user, login
 ):
     records = create_clinical_records(db, create_user)
@@ -109,11 +109,18 @@ def test_only_own_checked_in_appointment_can_be_started(
     assert client.patch(
         f"/appointments/{appointment.id}/start", headers=other_doctor_auth
     ).status_code == 403
-    appointment.status = "confirmed"
+    appointment.status = "requested"
     db.commit()
     assert client.patch(
         f"/appointments/{appointment.id}/start", headers=doctor_auth
     ).status_code == 409
+    appointment.status = "confirmed"
+    db.commit()
+    assert client.patch(
+        f"/appointments/{appointment.id}/start", headers=doctor_auth
+    ).status_code == 200
+    db.refresh(appointment)
+    assert appointment.status == "in_progress"
     appointment.status = "checked_in"
     db.commit()
     assert client.patch(
@@ -124,6 +131,36 @@ def test_only_own_checked_in_appointment_can_be_started(
     ).status_code == 200
     db.refresh(appointment)
     assert appointment.status == "in_progress"
+
+
+def test_doctor_can_confirm_and_check_in_only_an_assigned_appointment(
+    client, db, create_user, login
+):
+    records = create_clinical_records(db, create_user)
+    doctor_auth = headers(login(records["doctor_user"]))
+    assigned = records["assigned_appointment"]
+    other = records["other_appointment"]
+    assigned.status = "requested"
+    other.status = "requested"
+    db.commit()
+
+    assert client.patch(
+        f"/appointments/{other.id}/confirm", headers=doctor_auth
+    ).status_code == 403
+    assert client.patch(
+        f"/appointments/{assigned.id}/confirm", headers=doctor_auth
+    ).status_code == 200
+    assert client.patch(
+        f"/appointments/{other.id}/checkin", headers=doctor_auth
+    ).status_code == 403
+    assert client.patch(
+        f"/appointments/{assigned.id}/checkin", headers=doctor_auth
+    ).status_code == 200
+
+    db.refresh(assigned)
+    db.refresh(other)
+    assert assigned.status == "checked_in"
+    assert other.status == "requested"
 
 
 def test_consultation_requires_in_progress_and_creates_exactly_one_bill(

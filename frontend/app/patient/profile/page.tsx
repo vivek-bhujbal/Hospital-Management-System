@@ -2,15 +2,17 @@ import ClientForm from '@/components/ClientForm'
 import SubmitButton from '@/components/SubmitButton'
 import { fetchAPI } from '@/lib/api'
 import { updateProfileAction } from '@/app/actions/patient'
+import { PageHeader } from '@/components/ui/HmsUI'
 
 export default async function PatientProfile() {
   const profile = await fetchAPI('/patients/me')
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold text-gray-800">My Profile</h1>
+      <PageHeader eyebrow="Personal information" title="My profile" description="Keep your contact and basic health information accurate for safer care." />
       
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 max-w-2xl">
+      <section className="hms-card max-w-3xl p-5 sm:p-6">
+        <div className="mb-5 border-b pb-4"><h2 className="text-lg font-semibold">Patient information</h2><p className="mt-1 text-sm text-slate-500">These details help your hospital coordinate safer care.</p></div>
         <ClientForm action={updateProfileAction} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">Name</label>
@@ -42,11 +44,11 @@ export default async function PatientProfile() {
             <textarea name="address" defaultValue={profile.address || ''} rows={3} className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
           </div>
           
-          <SubmitButton className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">
+          <SubmitButton>
             Update Profile
           </SubmitButton>
         </ClientForm>
-      </div>
+      </section>
     </div>
   )
 }

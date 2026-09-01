@@ -1,101 +1,35 @@
 import Link from 'next/link'
+import { Activity, Building2, Settings, ShieldCheck, ShieldPlus, Users } from 'lucide-react'
 
+import { QuickActions, SectionCard } from '@/components/dashboard/DashboardKit'
+import { EmptyState, PageHeader, StatCard, StatusBadge } from '@/components/ui/HmsUI'
 import { fetchAPI } from '@/lib/api'
 
-interface ActivitySummary {
-  id: number
-  actor_user_id: number | null
-  action: string
-  resource_type: string
-  resource_id: string | null
-  created_at: string
-}
-
+interface ActivitySummary { id: number; actor_user_id: number | null; action: string; resource_type: string; resource_id: string | null; created_at: string }
 interface PlatformOverview {
-  total_organizations: number
-  total_admins: number
-  active_admins: number
-  total_users: number
-  role_permission_grants: number
-  system_settings: number
-  feature_flags: number
+  total_organizations: number; total_admins: number; active_admins: number; total_users: number
+  role_permission_grants: number; system_settings: number; feature_flags: number
   recent_activity: ActivitySummary[]
-  health: {
-    backend: string
-    database: string
-    redis: string
-    checked_at: string
-  }
+  health: { backend: string; database: string; redis: string; checked_at: string }
 }
 
 export default async function SuperAdminDashboard() {
   const overview = await fetchAPI('/super-admin/overview') as PlatformOverview
-  const cards = [
-    ['Organizations', overview.total_organizations, '/super-admin/hospitals'],
-    ['Administrators', overview.total_admins, '/super-admin/admins'],
-    ['Active admins', overview.active_admins, '/super-admin/admins'],
-    ['Total users', overview.total_users, '/super-admin/users'],
-    ['Role grants', overview.role_permission_grants, '/super-admin/permissions'],
-    ['System settings', overview.system_settings, '/super-admin/settings'],
-    ['Feature flags', overview.feature_flags, '/super-admin/features'],
-  ] as const
-
-  return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Platform dashboard</h1>
-        <p className="mt-1 text-gray-600">Global organizations, administrators, access controls, and platform health.</p>
-      </div>
-      <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-        {cards.map(([label, count, path]) => (
-          <Link key={label} href={path} className="rounded-xl border bg-white p-5 shadow-sm transition hover:border-blue-300 hover:shadow-md">
-            <p className="text-sm font-medium text-gray-500">{label}</p>
-            <p className="mt-2 text-3xl font-bold text-gray-900">{count}</p>
-          </Link>
-        ))}
-      </div>
-      <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
-        <section className="overflow-hidden rounded-xl border bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b p-5">
-            <h2 className="text-xl font-semibold text-gray-900">Recent system activity</h2>
-            <Link href="/super-admin/audit-logs" className="text-sm font-medium text-blue-600">View audit logs</Link>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y text-sm">
-              <thead className="bg-gray-50 text-left text-gray-600">
-                <tr><th className="p-4">Actor</th><th className="p-4">Action</th><th className="p-4">Resource</th><th className="p-4">Time</th></tr>
-              </thead>
-              <tbody className="divide-y">
-                {overview.recent_activity.length === 0 ? (
-                  <tr><td colSpan={4} className="p-8 text-center text-gray-500">No audit activity yet.</td></tr>
-                ) : overview.recent_activity.map((event) => (
-                  <tr key={event.id}>
-                    <td className="p-4">{event.actor_user_id ? `User #${event.actor_user_id}` : 'System'}</td>
-                    <td className="p-4 font-medium text-gray-900">{event.action}</td>
-                    <td className="p-4 text-gray-600">{event.resource_type}{event.resource_id ? ` #${event.resource_id}` : ''}</td>
-                    <td className="p-4 whitespace-nowrap text-gray-600">{new Date(event.created_at).toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-        <section className="rounded-xl border bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-900">System health</h2>
-            <Link href="/super-admin/system-health" className="text-sm font-medium text-blue-600">Details</Link>
-          </div>
-          <p className="mt-1 text-xs text-gray-500">Checked {new Date(overview.health.checked_at).toLocaleString()}</p>
-          <div className="mt-5 space-y-3">
-            {(['backend', 'database', 'redis'] as const).map((service) => (
-              <div key={service} className="flex items-center justify-between rounded-lg bg-gray-50 p-4">
-                <span className="font-medium capitalize text-gray-700">{service}</span>
-                <span className={overview.health[service] === 'available' ? 'font-semibold text-green-700' : 'font-semibold text-red-700'}>{overview.health[service]}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-      </div>
+  return <div className="space-y-7">
+    <PageHeader eyebrow="System control center" title="Platform overview" description="Global organizations, administrators, access governance, activity, and platform health." />
+    <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5" aria-label="Platform key performance indicators">
+      <StatCard label="Organizations" value={overview.total_organizations} icon={Building2} href="/super-admin/hospitals" />
+      <StatCard label="Administrators" value={overview.total_admins} icon={ShieldPlus} href="/super-admin/admins" tone="info" />
+      <StatCard label="Active admins" value={overview.active_admins} icon={ShieldCheck} href="/super-admin/admins" tone="success" />
+      <StatCard label="System users" value={overview.total_users} icon={Users} href="/super-admin/users" />
+      <StatCard label="Role grants" value={overview.role_permission_grants} icon={ShieldCheck} href="/super-admin/permissions" tone="warning" />
+    </section>
+    <QuickActions actions={[{ label: 'Create administrator', href: '/super-admin/admins', icon: ShieldPlus, primary: true }, { label: 'Manage hospitals', href: '/super-admin/hospitals', icon: Building2 }, { label: 'Access governance', href: '/super-admin/permissions', icon: ShieldCheck }, { label: 'System configuration', href: '/super-admin/settings', icon: Settings }]} />
+    <div className="grid gap-5 xl:grid-cols-[1.45fr_.55fr]">
+      <SectionCard title="Recent system activity" action={<Link href="/super-admin/audit-logs" className="text-sm font-semibold text-brand-700 dark:text-brand-300">View audit logs</Link>}>
+        {overview.recent_activity.length === 0 ? <EmptyState title="No audit activity yet" description="Administrative and security events will be recorded here." /> : <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead><tr><th className="px-5 py-3 text-left">Actor</th><th className="px-5 py-3 text-left">Action</th><th className="px-5 py-3 text-left">Resource</th><th className="px-5 py-3 text-left">Time</th></tr></thead><tbody className="divide-y">{overview.recent_activity.map((event) => <tr key={event.id}><td className="px-5 py-4">{event.actor_user_id ? `User #${event.actor_user_id}` : 'System'}</td><td className="px-5 py-4 font-semibold">{event.action}</td><td className="px-5 py-4">{event.resource_type}{event.resource_id ? ` #${event.resource_id}` : ''}</td><td className="whitespace-nowrap px-5 py-4">{new Date(event.created_at).toLocaleString()}</td></tr>)}</tbody></table></div>}
+      </SectionCard>
+      <SectionCard title="System health" action={<Link href="/super-admin/system-health" className="text-sm font-semibold text-brand-700 dark:text-brand-300">Details</Link>}><div className="space-y-3 p-5"><p className="text-xs text-slate-500">Checked {new Date(overview.health.checked_at).toLocaleString()}</p>{(['backend', 'database', 'redis'] as const).map((service) => <div key={service} className="flex items-center justify-between rounded-xl border bg-[var(--hms-surface-muted)] p-3.5"><span className="flex items-center gap-2 font-medium capitalize"><Activity className="h-4 w-4 text-brand-700" />{service}</span><StatusBadge status={overview.health[service]} /></div>)}</div></SectionCard>
     </div>
-  )
+  </div>
 }

@@ -1,8 +1,8 @@
 export default function DashboardCard({ title, value }: { title: string, value: string | number }) {
   return (
-    <div style={{ border: '1px solid #ccc', padding: '1rem', borderRadius: '8px' }}>
-      <h3>{title}</h3>
-      <p style={{ fontSize: '2rem', fontWeight: 'bold' }}>{value}</p>
+    <div className="hms-card p-5">
+      <h3 className="text-sm font-medium text-slate-500">{title}</h3>
+      <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900">{value}</p>
     </div>
-  );
+  )
 }

@@ -1,14 +1,12 @@
 import { SystemSettingsPanel, SystemSettingSummary } from '@/components/SuperAdminManagement'
 import { fetchAPI } from '@/lib/api'
+import { PageHeader } from '@/components/ui/HmsUI'
 
 export default async function SuperAdminSettings() {
   const settings = await fetchAPI('/super-admin/settings') as SystemSettingSummary[]
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">System settings</h1>
-        <p className="mt-1 text-gray-600">Create and update platform-wide configuration values.</p>
-      </div>
+      <PageHeader eyebrow="System configuration" title="Platform settings" description="Create and maintain configuration values shared across the hospital platform." />
       <SystemSettingsPanel settings={settings} />
     </div>
   )

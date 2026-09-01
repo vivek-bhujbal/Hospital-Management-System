@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { addDoctorAction } from '@/app/actions/admin'
 import SubmitButton from '@/components/SubmitButton'
+import { Modal } from '@/components/ui/Modal'
 
 const SPECIALIZATIONS = [
   "General Physician", "Internal Medicine", "Family Medicine", "Cardiology", "Cardiac Surgery",
@@ -59,62 +60,47 @@ export default function AddDoctorForm() {
 
   return (
     <>
-      <form action={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {error && <div className="col-span-full text-red-600 bg-red-50 p-3 rounded">{error}</div>}
-        
-        <input type="text" name="name" placeholder="Name" required className="border p-2 rounded" />
-        
-        <select name="specialization" required className="border p-2 rounded bg-white text-gray-700">
+      <form action={handleSubmit} className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {error && <div role="alert" className="col-span-full rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200">{error}</div>}
+        <label><span className="mb-1.5 block text-sm font-semibold">Full name</span><input type="text" name="name" autoComplete="name" placeholder="Doctor name" required className="hms-input" /></label>
+        <label><span className="mb-1.5 block text-sm font-semibold">Specialization</span><select name="specialization" required className="hms-input">
           <option value="">Select Specialization...</option>
           {SPECIALIZATIONS.map(spec => (
             <option key={spec} value={spec}>{spec}</option>
           ))}
-        </select>
-        
-        <input type="text" name="contact" placeholder="Contact" required className="border p-2 rounded" />
-
-        <input type="number" name="consultation_fee" min="0.01" step="0.01" placeholder="Consultation fee" required className="border p-2 rounded" />
-        
-        <input type="email" name="email" placeholder="Login Email" required value={email} onChange={e => setEmail(e.target.value)} className="border p-2 rounded" />
-        
-        <div className="flex gap-2">
-          <input type="password" name="password" placeholder="Password" required value={password} onChange={e => setPassword(e.target.value)} className="border p-2 rounded flex-1" />
-        </div>
-
-        <div className="flex gap-2">
-            <input type="time" name="timing_start" required className="border p-2 rounded w-full" aria-label="Shift Start" />
-            <input type="time" name="timing_end" required className="border p-2 rounded w-full" aria-label="Shift End" />
-        </div>
-        
-        <div className="col-span-full mt-2">
-          <SubmitButton className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 w-full md:w-auto">Add Doctor</SubmitButton>
+        </select></label>
+        <label><span className="mb-1.5 block text-sm font-semibold">Contact number</span><input type="text" name="contact" autoComplete="tel" placeholder="Primary contact" required className="hms-input" /></label>
+        <label><span className="mb-1.5 block text-sm font-semibold">Consultation fee</span><input type="number" name="consultation_fee" min="0.01" step="0.01" placeholder="Amount in INR" required className="hms-input" /></label>
+        <label><span className="mb-1.5 block text-sm font-semibold">Login email</span><input type="email" name="email" autoComplete="email" placeholder="doctor@hospital.com" required value={email} onChange={e => setEmail(e.target.value)} className="hms-input" /></label>
+        <label><span className="mb-1.5 block text-sm font-semibold">Temporary password</span><input type="password" name="password" autoComplete="new-password" placeholder="Secure temporary password" required value={password} onChange={e => setPassword(e.target.value)} className="hms-input" /></label>
+        <div className="grid grid-cols-2 gap-3"><label><span className="mb-1.5 block text-sm font-semibold">Shift start</span><input type="time" name="timing_start" required className="hms-input" /></label><label><span className="mb-1.5 block text-sm font-semibold">Shift end</span><input type="time" name="timing_end" required className="hms-input" /></label></div>
+        <div className="col-span-full flex justify-end pt-1">
+          <SubmitButton>Add doctor</SubmitButton>
         </div>
       </form>
 
       {successData && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white p-6 rounded-xl shadow-xl max-w-md w-full">
-            <h3 className="text-xl font-bold text-gray-800 mb-4">Doctor Created Successfully</h3>
-            <p className="text-gray-600 mb-4">
+        <Modal open title="Doctor created successfully" description="This temporary credential is shown once." onClose={() => setSuccessData(null)} size="sm">
+            <p className="text-sm leading-6 text-slate-600 dark:text-slate-300 mb-4">
               Please share these credentials with the doctor. The password is hashed and cannot be retrieved later.
             </p>
-            <div className="bg-gray-50 p-4 rounded-lg space-y-2 mb-6 border border-gray-100">
-              <p><span className="font-semibold text-gray-700">Email:</span> <span className="text-gray-900">{successData.email}</span></p>
-              <p><span className="font-semibold text-gray-700">Password:</span> <span className="text-gray-900 font-mono bg-white px-2 py-1 border rounded break-all">{successData.password}</span></p>
+            <div className="bg-[var(--hms-surface-muted)] p-4 rounded-xl space-y-3 mb-6 border">
+              <p className="text-sm"><span className="font-semibold">Email:</span> <span>{successData.email}</span></p>
+              <p className="text-sm"><span className="font-semibold">Temporary password:</span> <span className="font-mono bg-[var(--hms-surface)] px-2 py-1 border rounded break-all">{successData.password}</span></p>
             </div>
             <button 
+              type="button"
               onClick={() => {
                 setSuccessData(null)
                 setEmail('')
                 setPassword('')
                 window.location.reload()
               }}
-              className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition"
+              className="hms-button hms-button-primary w-full"
             >
               Done
             </button>
-          </div>
-        </div>
+        </Modal>
       )}
     </>
   )

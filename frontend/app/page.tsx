@@ -1,43 +1,37 @@
-import Link from 'next/link';
+import Link from 'next/link'
+import { Activity, ArrowRight, CalendarCheck2, HeartPulse, ShieldCheck, Stethoscope, Users } from 'lucide-react'
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-6 relative overflow-hidden">
-      {/* Background decorations */}
-      <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-blue-400 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob"></div>
-      <div className="absolute top-[10%] right-[-5%] w-96 h-96 bg-purple-400 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-2000"></div>
-      <div className="absolute bottom-[-10%] left-[20%] w-96 h-96 bg-pink-400 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-4000"></div>
-      
-      <div className="relative z-10 max-w-4xl w-full flex flex-col items-center text-center space-y-8 bg-white/60 backdrop-blur-lg p-12 rounded-3xl shadow-xl border border-white/50">
-        <div className="p-4 bg-blue-100 rounded-2xl mb-4 shadow-inner">
-          <svg className="w-12 h-12 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-          </svg>
+    <main id="main-content" className="min-h-screen bg-[var(--hms-bg)]">
+      <header className="border-b bg-[var(--hms-surface)]">
+        <div className="mx-auto flex h-18 max-w-7xl items-center justify-between px-5 py-4 sm:px-8">
+          <Link href="/" className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-800 text-white"><HeartPulse className="h-5 w-5" /></span><span><span className="block text-sm font-bold tracking-tight text-slate-900">HMS Platform</span><span className="block text-[0.62rem] font-semibold uppercase tracking-[0.15em] text-slate-500">Healthcare operations</span></span></Link>
+          <Link href="/login" className="hms-button hms-button-primary">Sign in<ArrowRight className="h-4 w-4" /></Link>
         </div>
-        
-        <h1 className="text-5xl md:text-6xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-600 drop-shadow-sm tracking-tight pb-2">
-          Hospital Management
-        </h1>
-        
-        <p className="text-lg md:text-xl text-slate-600 max-w-2xl leading-relaxed">
-          A unified, state-of-the-art platform connecting patients, doctors, and administration. Log in once, and we&apos;ll take you exactly where you need to be.
-        </p>
+      </header>
 
-        <div className="pt-8 w-full max-w-md flex flex-col gap-4">
-          <Link href="/login" className="w-full group flex items-center justify-center gap-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold text-lg py-4 px-8 rounded-xl shadow-lg hover:shadow-blue-500/30 hover:scale-[1.02] transition-all duration-300">
-            Sign In to Portal
-            <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
-          </Link>
-          
-          <Link href="/register" className="w-full bg-white text-slate-700 font-medium text-lg py-4 px-8 rounded-xl border-2 border-slate-200 hover:border-blue-200 hover:bg-slate-50 transition-all duration-300">
-            Create an Account
-          </Link>
+      <section className="mx-auto grid max-w-7xl items-center gap-12 px-5 py-16 sm:px-8 lg:grid-cols-[1.05fr_.95fr] lg:py-24">
+        <div>
+          <p className="hms-eyebrow">Connected hospital management</p>
+          <h1 className="mt-4 max-w-3xl text-4xl font-semibold leading-[1.08] tracking-[-0.045em] text-slate-950 sm:text-5xl lg:text-6xl">Better coordination for every moment of care.</h1>
+          <p className="mt-6 max-w-2xl text-base leading-8 text-slate-600 sm:text-lg">A secure, role-aware workspace for patients, clinical teams, front-desk operations, diagnostics, finance, insurance, and hospital leadership.</p>
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row"><Link href="/login" className="hms-button hms-button-primary px-5">Open your workspace<ArrowRight className="h-4 w-4" /></Link><Link href="/register" className="hms-button hms-button-secondary px-5">Create patient account</Link></div>
+          <p className="mt-5 flex items-center gap-2 text-xs font-medium text-slate-500"><ShieldCheck className="h-4 w-4 text-brand-700" />Secure access · Role-based permissions · Privacy-conscious workflows</p>
         </div>
-      </div>
-      
-      <div className="absolute bottom-6 text-slate-400 text-sm font-medium">
-        &copy; {new Date().getFullYear()} HMS Platform. All rights reserved.
-      </div>
+
+        <div className="relative">
+          <div className="absolute -inset-5 -z-10 rounded-[2rem] bg-brand-100/60 blur-2xl" aria-hidden="true" />
+          <section className="hms-card overflow-hidden p-4 sm:p-6" aria-label="Hospital operations overview">
+            <div className="flex items-center justify-between border-b pb-4"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-brand-700">Care coordination</p><h2 className="mt-1 text-lg font-semibold text-slate-900">A calmer operational view</h2></div><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-700"><Activity className="h-5 w-5" /></span></div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              {[{ icon: CalendarCheck2, title: 'Patient flow', text: 'Appointments, check-ins, and consultations remain connected.' }, { icon: Stethoscope, title: 'Clinical work', text: 'Relevant patient context stays clear and actionable.' }, { icon: Users, title: 'Role-aware teams', text: 'Each team sees only the tools needed for its work.' }, { icon: ShieldCheck, title: 'Secure by design', text: 'Backend authorization remains the source of truth.' }].map(({ icon: Icon, title, text }) => <article key={title} className="rounded-xl border bg-[var(--hms-surface-muted)] p-4"><Icon className="h-5 w-5 text-brand-700" /><h3 className="mt-3 text-sm font-semibold text-slate-900">{title}</h3><p className="mt-1 text-xs leading-5 text-slate-500">{text}</p></article>)}
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <footer className="border-t bg-[var(--hms-surface)]"><div className="mx-auto flex max-w-7xl flex-col gap-2 px-5 py-6 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-8"><p>© {new Date().getFullYear()} HMS Platform</p><p>Professional hospital operations and patient care management</p></div></footer>
     </main>
-  );
+  )
 }

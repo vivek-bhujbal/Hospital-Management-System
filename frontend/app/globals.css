@@ -2,9 +2,477 @@
 @tailwind components;
 @tailwind utilities;
 
-.animation-delay-2000 {
-  animation-delay: 2s;
+@layer base {
+  :root {
+    color-scheme: light;
+    --hms-primary: #0b7767;
+    --hms-primary-strong: #075e53;
+    --hms-primary-soft: #e8f7f3;
+    --hms-accent: #2563eb;
+    --hms-bg: #f4f7f8;
+    --hms-surface: #ffffff;
+    --hms-surface-muted: #f8fafc;
+    --hms-border: #dce4e7;
+    --hms-border-strong: #c8d4d8;
+    --hms-text: #17212b;
+    --hms-text-muted: #60707c;
+    --hms-sidebar: #092f2d;
+    --hms-sidebar-raised: #0d3c39;
+    --hms-focus: #22a88d;
+    --hms-success: #138a61;
+    --hms-warning: #b76a10;
+    --hms-danger: #c43d4b;
+    --hms-info: #2563a9;
+    --hms-shadow: 0 1px 2px rgb(15 23 42 / 0.04), 0 10px 28px rgb(15 23 42 / 0.045);
+    --hms-shadow-raised: 0 18px 48px rgb(15 23 42 / 0.11);
+    --hms-radius-sm: 0.55rem;
+    --hms-radius: 0.8rem;
+    --hms-radius-lg: 1rem;
+  }
+
+  .dark {
+    color-scheme: dark;
+    --hms-primary: #3dd4b6;
+    --hms-primary-strong: #76e6d0;
+    --hms-primary-soft: #103d39;
+    --hms-accent: #78a9ff;
+    --hms-bg: #101718;
+    --hms-surface: #172123;
+    --hms-surface-muted: #1b282a;
+    --hms-border: #2d3b3e;
+    --hms-border-strong: #405154;
+    --hms-text: #eef6f5;
+    --hms-text-muted: #a7b7b8;
+    --hms-sidebar: #071f1f;
+    --hms-sidebar-raised: #10302e;
+    --hms-focus: #54d8bd;
+    --hms-shadow: 0 1px 2px rgb(0 0 0 / 0.2), 0 12px 30px rgb(0 0 0 / 0.18);
+    --hms-shadow-raised: 0 20px 52px rgb(0 0 0 / 0.3);
+  }
+
+  * {
+    border-color: var(--hms-border);
+  }
+
+  html {
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    scroll-behavior: smooth;
+  }
+
+  body {
+    min-width: 320px;
+    background: var(--hms-bg);
+    color: var(--hms-text);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: #a7f3df;
+    color: #083b35;
+  }
+
+  :focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--hms-focus) 40%, transparent);
+    outline-offset: 2px;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button,
+  a {
+    transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  }
+
+  button:disabled,
+  input:disabled,
+  select:disabled,
+  textarea:disabled {
+    cursor: not-allowed;
+    opacity: 0.62;
+  }
 }
-.animation-delay-4000 {
-  animation-delay: 4s;
+
+@layer components {
+  .hms-card {
+    border: 1px solid var(--hms-border);
+    border-radius: var(--hms-radius-lg);
+    background: var(--hms-surface);
+    box-shadow: var(--hms-shadow);
+  }
+
+  .hms-card-interactive:hover {
+    border-color: color-mix(in srgb, var(--hms-primary) 34%, var(--hms-border));
+    box-shadow: 0 14px 34px rgb(15 118 103 / 0.09);
+    transform: translateY(-1px);
+  }
+
+  .hms-eyebrow {
+    color: var(--hms-primary);
+    font-size: 0.72rem;
+    font-weight: 750;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .hms-page-title {
+    color: var(--hms-text);
+    font-size: clamp(1.65rem, 2vw, 2.1rem);
+    font-weight: 730;
+    letter-spacing: -0.035em;
+    line-height: 1.15;
+  }
+
+  .hms-page-description {
+    margin-top: 0.4rem;
+    max-width: 52rem;
+    color: var(--hms-text-muted);
+    font-size: 0.925rem;
+    line-height: 1.55;
+  }
+
+  .hms-button {
+    display: inline-flex;
+    min-height: 2.55rem;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: 1px solid transparent;
+    border-radius: var(--hms-radius-sm);
+    padding: 0.6rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 680;
+    line-height: 1.2;
+  }
+
+  .hms-button-primary {
+    background: var(--hms-primary-strong);
+    color: #fff;
+    box-shadow: 0 5px 14px rgb(11 119 103 / 0.16);
+  }
+
+  .hms-button-primary:hover {
+    background: #064f47;
+    box-shadow: 0 8px 20px rgb(11 119 103 / 0.22);
+  }
+
+  .dark .hms-button-primary:hover {
+    background: #188f7b;
+  }
+
+  .hms-button-secondary {
+    border-color: var(--hms-border-strong);
+    background: var(--hms-surface);
+    color: var(--hms-text);
+  }
+
+  .hms-button-secondary:hover {
+    border-color: var(--hms-primary);
+    background: var(--hms-primary-soft);
+    color: var(--hms-primary-strong);
+  }
+
+  .hms-input {
+    min-height: 2.75rem;
+    width: 100%;
+    border: 1px solid var(--hms-border-strong);
+    border-radius: var(--hms-radius-sm);
+    background: var(--hms-surface);
+    color: var(--hms-text);
+    padding: 0.68rem 0.8rem;
+    font-size: 0.9rem;
+    box-shadow: 0 1px 1px rgb(15 23 42 / 0.025);
+  }
+
+  .hms-input:focus {
+    border-color: var(--hms-focus);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--hms-focus) 17%, transparent);
+    outline: none;
+  }
+
+  .hms-skeleton {
+    background: linear-gradient(90deg, var(--hms-surface-muted) 20%, color-mix(in srgb, var(--hms-border) 70%, white) 40%, var(--hms-surface-muted) 60%);
+    background-size: 200% 100%;
+    animation: shimmer 1.6s linear infinite;
+  }
+}
+
+/* A compatibility layer gives every existing API-driven page the same premium
+   visual language while route components migrate to semantic primitives. */
+.hms-content {
+  color: var(--hms-text);
+}
+
+.hms-content > * {
+  animation: fade-in 180ms ease-out;
+}
+
+.hms-content h1 {
+  color: var(--hms-text) !important;
+  letter-spacing: -0.032em;
+}
+
+.hms-content h2,
+.hms-content h3,
+.hms-content .text-gray-900,
+.hms-content .text-gray-800,
+.hms-content .text-slate-900,
+.hms-content .text-slate-800 {
+  color: var(--hms-text);
+}
+
+.hms-content .text-gray-600,
+.hms-content .text-gray-500,
+.hms-content .text-slate-600,
+.hms-content .text-slate-500 {
+  color: var(--hms-text-muted);
+}
+
+.hms-content .bg-white {
+  background-color: var(--hms-surface);
+}
+
+.hms-content .bg-gray-50,
+.hms-content .bg-slate-50 {
+  background-color: var(--hms-surface-muted);
+}
+
+.hms-content .shadow-sm {
+  box-shadow: var(--hms-shadow);
+}
+
+.hms-content table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.hms-content thead {
+  background: var(--hms-surface-muted);
+}
+
+.hms-content th {
+  color: var(--hms-text-muted) !important;
+  font-size: 0.7rem;
+  font-weight: 750 !important;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.hms-content tbody tr {
+  transition: background-color 140ms ease;
+}
+
+.hms-content tbody tr:hover {
+  background: color-mix(in srgb, var(--hms-primary-soft) 45%, transparent);
+}
+
+.hms-content td {
+  color: var(--hms-text);
+}
+
+/* Legacy workflow normalization. All role workspaces live inside .hms-content,
+   so older route components inherit the same design tokens while their data and
+   authorization behavior remain unchanged. */
+.hms-content :is(section, article, form, details, div)[class*='border'][class*='bg-white'] {
+  border-color: var(--hms-border) !important;
+  background-color: var(--hms-surface) !important;
+}
+
+.hms-content :is(section, article, form, details, div)[class*='rounded-xl'][class*='border'],
+.hms-content :is(section, article, form, details, div)[class*='rounded-2xl'][class*='border'] {
+  box-shadow: var(--hms-shadow);
+}
+
+.hms-content :is(.bg-blue-500, .bg-blue-600, .bg-blue-700, .bg-indigo-600, .bg-purple-600) {
+  background-color: var(--hms-primary-strong) !important;
+  color: #fff !important;
+}
+
+.hms-content :is(.hover\:bg-blue-700, .hover\:bg-blue-800):hover {
+  background-color: #064f47 !important;
+}
+
+.hms-content :is(.text-blue-500, .text-blue-600, .text-blue-700, .text-blue-800, .text-blue-900, .text-indigo-600, .text-indigo-700, .text-purple-600) {
+  color: var(--hms-primary) !important;
+}
+
+.hms-content :is(.border-blue-200, .border-blue-300, .border-blue-500, .border-blue-600, .border-indigo-200, .border-indigo-600) {
+  border-color: color-mix(in srgb, var(--hms-primary) 42%, var(--hms-border)) !important;
+}
+
+.hms-content :is(.bg-blue-50, .bg-blue-100, .bg-indigo-50) {
+  background-color: var(--hms-primary-soft) !important;
+}
+
+.hms-content :is(.ring-blue-500, .ring-blue-600) {
+  --tw-ring-color: var(--hms-primary) !important;
+}
+
+.hms-content label {
+  color: var(--hms-text);
+  font-weight: 600;
+}
+
+.hms-content input:not([type='checkbox']):not([type='radio']),
+.hms-content select,
+.hms-content textarea {
+  min-height: 2.75rem;
+  border-radius: var(--hms-radius-sm) !important;
+  box-shadow: 0 1px 1px rgb(15 23 42 / 0.025);
+}
+
+.hms-content textarea {
+  min-height: 5.5rem;
+}
+
+.hms-content details > summary {
+  color: var(--hms-text);
+  font-weight: 700;
+}
+
+.hms-content table > tbody > tr > td {
+  border-color: var(--hms-border);
+}
+
+.hms-content table a:not(.hms-button) {
+  color: var(--hms-primary);
+  font-weight: 650;
+}
+
+.hms-content button[class*='bg-blue-'],
+.hms-content a[class*='bg-blue-'] {
+  border-radius: var(--hms-radius-sm) !important;
+  box-shadow: 0 5px 14px rgb(11 119 103 / 0.16);
+}
+
+.hms-content p[class*='uppercase'][class*='tracking'] {
+  color: var(--hms-primary) !important;
+}
+
+.hms-content input:not([type='checkbox']):not([type='radio']),
+.hms-content select,
+.hms-content textarea,
+.hms-auth input:not([type='checkbox']):not([type='radio']),
+.hms-auth select,
+.hms-auth textarea {
+  border-color: var(--hms-border-strong) !important;
+  background: var(--hms-surface) !important;
+  color: var(--hms-text) !important;
+}
+
+.hms-content input:focus,
+.hms-content select:focus,
+.hms-content textarea:focus,
+.hms-auth input:focus,
+.hms-auth select:focus,
+.hms-auth textarea:focus {
+  border-color: var(--hms-focus) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--hms-focus) 16%, transparent) !important;
+  outline: none;
+}
+
+.hms-auth .bg-white\/80,
+.hms-auth .bg-white\/90 {
+  background: var(--hms-surface) !important;
+  backdrop-filter: none !important;
+  border-color: var(--hms-border) !important;
+  box-shadow: var(--hms-shadow) !important;
+}
+
+.hms-auth .text-purple-600,
+.hms-auth .group:focus-within .group-focus-within\:text-purple-600 {
+  color: var(--hms-primary) !important;
+}
+
+.hms-auth .bg-gradient-to-r {
+  background-image: none !important;
+  background-color: var(--hms-primary-strong) !important;
+}
+
+.dark .hms-content .border-gray-100,
+.dark .hms-content .border-gray-200,
+.dark .hms-content .border-slate-100,
+.dark .hms-content .border-slate-200,
+.dark .hms-content .border-slate-300,
+.dark .hms-auth .border-slate-200,
+.dark .hms-auth .border-slate-300 {
+  border-color: var(--hms-border) !important;
+}
+
+.dark .hms-content .text-blue-600,
+.dark .hms-content .text-blue-700,
+.dark .hms-content .text-blue-800 {
+  color: #67cdb9 !important;
+}
+
+.dark .hms-content .bg-blue-50 {
+  background-color: #0e3535 !important;
+}
+
+.dark .hms-content .text-blue-900 {
+  color: #b8e8df !important;
+}
+
+.dark .hms-content .bg-emerald-50,
+.dark .hms-content .bg-green-50 {
+  background-color: #12362d !important;
+}
+
+.dark .hms-content .bg-amber-50 {
+  background-color: #3b2c16 !important;
+}
+
+.dark .hms-content .bg-red-50,
+.dark .hms-content .bg-rose-50 {
+  background-color: #3a2024 !important;
+}
+
+@media (max-width: 640px) {
+  .hms-content h1 {
+    font-size: 1.65rem !important;
+    line-height: 1.2 !important;
+  }
+
+  .hms-content h2 {
+    font-size: 1.1rem;
+  }
+
+  .hms-content table th,
+  .hms-content table td {
+    white-space: nowrap;
+  }
+
+  .hms-content button,
+  .hms-content a[class*='px-'] {
+    min-height: 2.65rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media print {
+  .hms-sidebar,
+  .hms-header {
+    display: none !important;
+  }
+
+  .hms-content {
+    padding: 0 !important;
+  }
 }

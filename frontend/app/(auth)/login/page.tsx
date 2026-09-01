@@ -1,9 +1,12 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { loginAction } from '@/app/actions/auth'
+import { AlertCircle, ArrowRight, CheckCircle2, LoaderCircle, LockKeyhole, Mail } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { useState } from 'react'
+
+import { loginAction } from '@/app/actions/auth'
+import AuthShell from '@/components/layout/AuthShell'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -11,37 +14,35 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [resending, setResending] = useState(false)
   const [resendMsg, setResendMsg] = useState('')
+  const [resendError, setResendError] = useState('')
   const [email, setEmail] = useState('')
 
   const handleResend = async () => {
     if (!email) return
     setResending(true)
     setResendMsg('')
+    setResendError('')
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/auth/resend-verification`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
-      })
-      const data = await res.json()
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/auth/resend-verification`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.detail || 'Unable to send the verification email.')
       setResendMsg(data.message || 'Verification email sent.')
-    } catch (e) {
-      setResendMsg('Failed to send verification email.')
+    } catch (resendFailure) {
+      setResendError(resendFailure instanceof Error ? resendFailure.message : 'Unable to send the verification email. Please try again.')
+    } finally {
+      setResending(false)
     }
-    setResending(false)
   }
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
     setLoading(true)
     setError('')
     setResendMsg('')
-    
-    const formData = new FormData(e.currentTarget)
-    setEmail(formData.get('email') as string)
-    
+    setResendError('')
+    const formData = new FormData(event.currentTarget)
+    setEmail(String(formData.get('email') || ''))
     const result = await loginAction(null, formData)
-    
     if (result?.error) {
       setError(result.error)
       setLoading(false)
@@ -51,93 +52,18 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden">
-      {/* Background blobs */}
-      <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-200 rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-blob"></div>
-      <div className="absolute top-0 right-1/4 w-96 h-96 bg-indigo-200 rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-blob animation-delay-2000"></div>
+    <AuthShell title="Welcome back" description="Sign in with your authorized hospital account. We’ll open the workspace assigned to your role.">
+      {error && <div role="alert" className="mb-5 flex gap-3 rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><div><p className="font-medium">{error}</p>{error.toLowerCase().includes('verify your email') && <button type="button" onClick={handleResend} disabled={resending} className="mt-2 font-semibold underline underline-offset-2">{resending ? 'Sending…' : 'Resend verification email'}</button>}</div></div>}
+      {resendMsg && <div role="status" className="mb-5 flex gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /><p>{resendMsg}</p></div>}
+      {resendError && <div role="alert" className="mb-5 flex gap-3 rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><p>{resendError}</p></div>}
 
-      <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10">
-        <Link href="/" className="flex justify-center mb-6 text-blue-600 hover:text-blue-800 transition-colors">
-          <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
-        </Link>
-        <h2 className="text-center text-3xl font-extrabold text-slate-900 tracking-tight">
-          Welcome back
-        </h2>
-        <p className="mt-2 text-center text-sm text-slate-600">
-          Sign in to access your unified portal dashboard
-        </p>
-      </div>
+      <form className="space-y-5" onSubmit={handleSubmit} noValidate>
+        <label htmlFor="email" className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Email address<span className="ml-1 text-rose-500" aria-hidden="true">*</span><span className="relative mt-2 block"><Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input id="email" name="email" type="email" autoComplete="email" required className="hms-input pl-10" placeholder="name@hospital.com" /></span></label>
+        <label htmlFor="password" className="block text-sm font-semibold text-slate-700 dark:text-slate-200"><span className="flex items-center justify-between"><span>Password<span className="ml-1 text-rose-500" aria-hidden="true">*</span></span><Link href="/forgot-password" className="text-xs font-semibold text-brand-700 hover:text-brand-800 dark:text-brand-300">Forgot password?</Link></span><span className="relative mt-2 block"><LockKeyhole className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input id="password" name="password" type="password" autoComplete="current-password" required className="hms-input pl-10" placeholder="Enter your password" /></span></label>
+        <button type="submit" disabled={loading} className="hms-button hms-button-primary w-full">{loading ? <><LoaderCircle className="h-4 w-4 animate-spin" />Signing in securely…</> : <>Sign in securely<ArrowRight className="h-4 w-4" /></>}</button>
+      </form>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md relative z-10">
-        <div className="bg-white/80 backdrop-blur-xl py-8 px-6 shadow-2xl shadow-blue-900/5 sm:rounded-2xl sm:px-10 border border-white">
-          {error && (
-            <div className="mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded-r-md">
-              <div className="flex items-center">
-                <svg className="h-5 w-5 text-red-400 mr-3" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                </svg>
-                <div className="text-sm text-red-700 font-medium w-full">
-                  <p>{error}</p>
-                  {error.includes("verify your email") && (
-                    <button 
-                      onClick={handleResend}
-                      disabled={resending}
-                      className="mt-2 text-blue-600 hover:text-blue-800 underline text-xs font-semibold"
-                    >
-                      {resending ? 'Sending...' : 'Resend Verification Email'}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-          
-          {resendMsg && (
-             <div className="mb-6 bg-green-50 border-l-4 border-green-500 p-4 rounded-r-md">
-               <p className="text-sm text-green-700 font-medium">{resendMsg}</p>
-             </div>
-          )}
-
-          <form className="space-y-6" onSubmit={handleSubmit}>
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-slate-700">Email address</label>
-              <div className="mt-2">
-                <input id="email" name="email" type="email" required className="appearance-none block w-full px-4 py-3 border border-slate-300 rounded-xl shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" placeholder="you@example.com" />
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between">
-                <label htmlFor="password" className="block text-sm font-medium text-slate-700">Password</label>
-                <Link href="/forgot-password" className="text-sm font-medium text-blue-600 hover:text-blue-500">
-                  Forgot Password?
-                </Link>
-              </div>
-              <div className="mt-2">
-                <input id="password" name="password" type="password" required className="appearance-none block w-full px-4 py-3 border border-slate-300 rounded-xl shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" placeholder="••••••••" />
-              </div>
-            </div>
-
-            <div className="pt-2">
-              <button type="submit" disabled={loading} className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-md text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all ${loading ? 'opacity-70 cursor-not-allowed' : 'hover:scale-[1.01]'}`}>
-                {loading ? (
-                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                ) : 'Sign In Securely'}
-              </button>
-            </div>
-          </form>
-
-          <div className="mt-8 text-center text-sm border-t border-slate-200 pt-6">
-            <span className="text-slate-500">Don&apos;t have an account? </span>
-            <Link href="/register" className="font-semibold text-blue-600 hover:text-blue-500 transition-colors">
-              Register here
-            </Link>
-          </div>
-        </div>
-      </div>
-    </div>
+      <div className="mt-6 border-t pt-5 text-center text-sm text-slate-500">Need a patient account? <Link href="/register" className="font-semibold text-brand-700 hover:text-brand-800 dark:text-brand-300">Create one</Link></div>
+    </AuthShell>
   )
 }

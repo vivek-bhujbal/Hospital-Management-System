@@ -1,18 +1,19 @@
 import { fetchAPI } from '@/lib/api'
+import { EmptyState, PageHeader } from '@/components/ui/HmsUI'
 
 export default async function PatientPrescriptions() {
   const prescriptions = await fetchAPI('/prescriptions/me')
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold text-gray-800">My Prescriptions</h1>
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+      <PageHeader eyebrow="My care" title="Prescriptions" description="Review medicines and clinical directions issued during your consultations." />
+      <section className="hms-card p-5 sm:p-6">
         {prescriptions.length === 0 ? (
-          <p className="text-gray-500">No prescriptions found.</p>
+          <EmptyState title="No prescriptions yet" description="Prescriptions issued by your doctor will appear here." />
         ) : (
           <ul className="space-y-4">
             {prescriptions.map((p: any) => (
-              <li key={p.id} className="p-4 border rounded shadow-sm">
+              <li key={p.id} className="rounded-xl border p-4">
                 <p><strong>Diagnosis:</strong> {p.diagnosis}</p>
                 <p><strong>Medicine:</strong> {p.medicine}</p>
                 <p><strong>Dosage:</strong> {p.dosage}</p>
@@ -22,7 +23,7 @@ export default async function PatientPrescriptions() {
             ))}
           </ul>
         )}
-      </div>
+      </section>
     </div>
   )
 }

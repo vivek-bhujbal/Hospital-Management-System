@@ -69,7 +69,10 @@ def test_backend_rejects_weak_registration_password(client):
     assert response.status_code == 422
 
 
-def test_patient_registration_still_creates_linked_profile(client, db):
+def test_patient_registration_still_creates_linked_profile(client, db, monkeypatch):
+    monkeypatch.setattr(
+        "app.routers.auth.send_verification_email", lambda *_args: True
+    )
     response = client.post(
         "/auth/register",
         json={
@@ -85,6 +88,23 @@ def test_patient_registration_still_creates_linked_profile(client, db):
     profile = db.query(Patient).filter(Patient.user_id == user.id).one()
     assert user.role == "patient"
     assert profile.name == user.name
+
+
+def test_registration_reports_verification_delivery_failure(client, monkeypatch):
+    monkeypatch.setattr(
+        "app.routers.auth.send_verification_email", lambda *_args: False
+    )
+    response = client.post(
+        "/auth/register",
+        json={
+            "name": "Mail Delivery Test",
+            "email": "mail-delivery-test@example.com",
+            "password": "Strong1!Password",
+            "contact": "1234567890",
+        },
+    )
+    assert response.status_code == 503
+    assert "could not send" in response.json()["detail"].lower()
 
 
 def test_disabling_user_revokes_existing_token(client, db, create_user, login):

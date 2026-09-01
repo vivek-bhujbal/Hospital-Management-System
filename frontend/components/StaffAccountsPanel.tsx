@@ -59,18 +59,18 @@ export default function StaffAccountsPanel({ accounts }: { accounts: AccountSumm
         <form ref={formRef} action={submit} className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {error && <p className="md:col-span-2 xl:col-span-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
           {success && <p className="md:col-span-2 xl:col-span-4 rounded-lg bg-green-50 p-3 text-sm text-green-700">{success}</p>}
-          <input name="name" required maxLength={100} placeholder="Full name" className="rounded-lg border p-3" />
-          <input name="email" required type="email" placeholder="Email address" className="rounded-lg border p-3" />
-          <input name="password" required type="password" minLength={8} placeholder="Strong temporary password" className="rounded-lg border p-3" />
-          <select name="role" value={role} onChange={(event) => setRole(event.target.value)} className="rounded-lg border bg-white p-3">
+          <input name="name" aria-label="Staff full name" autoComplete="name" required maxLength={100} placeholder="Full name" className="rounded-lg border p-3" />
+          <input name="email" aria-label="Staff email address" autoComplete="email" required type="email" placeholder="Email address" className="rounded-lg border p-3" />
+          <input name="password" aria-label="Staff temporary password" autoComplete="new-password" required type="password" minLength={8} placeholder="Strong temporary password" className="rounded-lg border p-3" />
+          <select name="role" aria-label="Staff role" value={role} onChange={(event) => setRole(event.target.value)} className="rounded-lg border bg-white p-3">
             {STAFF_ROLES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
 
           {role === 'doctor' && (
             <>
-              <input name="specialization" required placeholder="Specialization" className="rounded-lg border p-3" />
-              <input name="consultation_fee" required type="number" min="0.01" step="0.01" placeholder="Consultation fee" className="rounded-lg border p-3" />
-              <input name="contact" maxLength={20} placeholder="Contact" className="rounded-lg border p-3" />
+              <input name="specialization" aria-label="Doctor specialization" required placeholder="Specialization" className="rounded-lg border p-3" />
+              <input name="consultation_fee" aria-label="Doctor consultation fee" required type="number" min="0.01" step="0.01" placeholder="Consultation fee" className="rounded-lg border p-3" />
+              <input name="contact" aria-label="Doctor contact number" maxLength={20} placeholder="Contact" className="rounded-lg border p-3" />
               <div className="grid grid-cols-2 gap-2">
                 <input name="timing_start" type="time" aria-label="Doctor start time" className="rounded-lg border p-3" />
                 <input name="timing_end" type="time" aria-label="Doctor end time" className="rounded-lg border p-3" />
@@ -80,7 +80,7 @@ export default function StaffAccountsPanel({ accounts }: { accounts: AccountSumm
 
           {role === 'receptionist' && (
             <>
-              <input name="designation" required placeholder="Designation" className="rounded-lg border p-3" />
+              <input name="designation" aria-label="Receptionist designation" required placeholder="Designation" className="rounded-lg border p-3" />
               <input name="joining_date" type="date" aria-label="Joining date" className="rounded-lg border p-3" />
               <input name="shift_start" type="time" aria-label="Shift start" className="rounded-lg border p-3" />
               <input name="shift_end" type="time" aria-label="Shift end" className="rounded-lg border p-3" />

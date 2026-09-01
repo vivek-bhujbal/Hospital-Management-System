@@ -18,6 +18,10 @@ from datetime import datetime, timedelta, timezone
 router = APIRouter()
 
 FRONTEND_URL = settings.FRONTEND_URL
+EMAIL_DELIVERY_ERROR = (
+    "We could not send the email right now. Please check the mail configuration "
+    "or try resending in a few minutes."
+)
 
 
 def utcnow() -> datetime:
@@ -56,6 +60,13 @@ def generate_token():
 def hash_token(token: str):
     return hashlib.sha256(token.encode()).hexdigest()
 
+def require_email_delivery(delivered: bool) -> None:
+    if not delivered:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=EMAIL_DELIVERY_ERROR,
+        )
+
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def register(user_in: PatientRegister, db: Session = Depends(get_db)):
     # Check if user already exists
@@ -74,7 +85,9 @@ def register(user_in: PatientRegister, db: Session = Depends(get_db)):
             db.commit()
             
             verification_link = f"{FRONTEND_URL}/verify-email?token={token}"
-            send_verification_email(user.email, user.name, verification_link)
+            require_email_delivery(
+                send_verification_email(user.email, user.name, verification_link)
+            )
             
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -123,7 +136,9 @@ def register(user_in: PatientRegister, db: Session = Depends(get_db)):
     
     # Send verification email
     verification_link = f"{FRONTEND_URL}/verify-email?token={token}"
-    send_verification_email(new_user.email, new_user.name, verification_link)
+    require_email_delivery(
+        send_verification_email(new_user.email, new_user.name, verification_link)
+    )
     
     return new_user
 
@@ -208,7 +223,9 @@ def resend_verification(data: ResendVerificationRequest, db: Session = Depends(g
     db.commit()
     
     verification_link = f"{FRONTEND_URL}/verify-email?token={token}"
-    send_verification_email(user.email, user.name, verification_link)
+    require_email_delivery(
+        send_verification_email(user.email, user.name, verification_link)
+    )
     
     return {"message": "A new verification email has been sent."}
 

@@ -1,6 +1,6 @@
 import React from 'react'
 import { redirect } from 'next/navigation'
-import Sidebar from './Sidebar'
+import AppShell, { ShellNotification } from './layout/AppShell'
 import {
   hasPermission,
   isPermission,
@@ -18,6 +18,8 @@ interface DashboardLayoutProps {
 }
 
 interface CurrentUserAuthorization {
+  name: string
+  email: string
   role: UserRole
   effective_permissions: unknown[]
 }
@@ -39,18 +41,7 @@ export default async function DashboardLayout({
     redirect(ROLE_HOME[authorization.role] || '/login')
   }
 
-  return (
-    <div className="flex h-screen overflow-hidden bg-gray-50 font-sans">
-      <Sidebar
-        role={authorization.role}
-        portalRole={role}
-        permissions={permissions}
-      />
-      <main className="flex-1 p-8 overflow-y-auto">
-        <div className="max-w-7xl mx-auto">
-          {children}
-        </div>
-      </main>
-    </div>
-  )
+  const notifications = await fetchAPI('/notifications/me').catch(() => []) as ShellNotification[]
+
+  return <AppShell role={authorization.role} portalRole={role} permissions={permissions} user={{ name: authorization.name, email: authorization.email }} notifications={notifications}>{children}</AppShell>
 }

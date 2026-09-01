@@ -1,82 +1,19 @@
+import { CalendarDays, CircleDollarSign, Stethoscope, UserRound, UsersRound } from 'lucide-react'
 import AutoRefresh from '@/components/AutoRefresh'
+import { EmptyState, PageHeader, StatCard, StatusBadge } from '@/components/ui/HmsUI'
 import { fetchAPI } from '@/lib/api'
 
-interface RecentAppointment {
-  id: number
-  patient_id: number
-  doctor_id: number
-  appt_date: string
-  appt_time: string
-  status: string
-}
-
-interface RecentBilling {
-  id: number
-  patient_id: number
-  amount: number | string
-  status: string
-  created_at: string
-}
-
-interface AdminOverview {
-  total_patients: number
-  total_doctors: number
-  today_appointments: number
-  pending_bills: number
-  collected_revenue: number
-  recent_appointments: RecentAppointment[]
-  recent_billing: RecentBilling[]
-}
+interface RecentAppointment { id: number; patient_id: number; doctor_id: number; appt_date: string; appt_time: string; status: string }
+interface RecentBilling { id: number; patient_id: number; amount: number | string; status: string; created_at: string }
+interface AdminOverview { total_patients: number; total_doctors: number; today_appointments: number; pending_bills: number; collected_revenue: number; recent_appointments: RecentAppointment[]; recent_billing: RecentBilling[] }
 
 export default async function AdminHome() {
   const overview = await fetchAPI('/admin/overview') as AdminOverview
-  const cards = [
-    ['Total patients', overview.total_patients, 'text-blue-700'],
-    ['Total doctors', overview.total_doctors, 'text-indigo-700'],
-    ["Today's appointments", overview.today_appointments, 'text-green-700'],
-    ['Pending bills', overview.pending_bills, 'text-red-600'],
-    ['Collected revenue', `₹${overview.collected_revenue.toFixed(2)}`, 'text-emerald-700'],
-  ] as const
-
-  return (
-    <div className="space-y-8">
-      <AutoRefresh interval={5000} />
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Hospital operations</h1>
-        <p className="mt-1 text-gray-600">Patients, clinical staffing, appointments, and billing.</p>
-      </div>
-      <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-5">
-        {cards.map(([label, value, color]) => (
-          <section key={label} className="rounded-xl border bg-white p-5 shadow-sm">
-            <h2 className="text-sm font-semibold uppercase text-gray-500">{label}</h2>
-            <p className={`mt-2 text-3xl font-bold ${color}`}>{value}</p>
-          </section>
-        ))}
-      </div>
-      <div className="grid gap-6 xl:grid-cols-2">
-        <section className="overflow-x-auto rounded-xl border bg-white shadow-sm">
-          <h2 className="border-b p-5 text-xl font-semibold text-gray-900">Recent appointments</h2>
-          <table className="min-w-full divide-y text-sm">
-            <thead className="bg-gray-50 text-left text-gray-600"><tr><th className="p-4">Date/time</th><th className="p-4">Patient</th><th className="p-4">Doctor</th><th className="p-4">Status</th></tr></thead>
-            <tbody className="divide-y">
-              {overview.recent_appointments.length === 0 ? <tr><td colSpan={4} className="p-8 text-center text-gray-500">No appointments yet.</td></tr> : overview.recent_appointments.map((appointment) => (
-                <tr key={appointment.id}><td className="p-4">{appointment.appt_date} {appointment.appt_time}</td><td className="p-4">#{appointment.patient_id}</td><td className="p-4">#{appointment.doctor_id}</td><td className="p-4 capitalize">{appointment.status.replaceAll('_', ' ')}</td></tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-        <section className="overflow-x-auto rounded-xl border bg-white shadow-sm">
-          <h2 className="border-b p-5 text-xl font-semibold text-gray-900">Recent billing activity</h2>
-          <table className="min-w-full divide-y text-sm">
-            <thead className="bg-gray-50 text-left text-gray-600"><tr><th className="p-4">Created</th><th className="p-4">Patient</th><th className="p-4">Amount</th><th className="p-4">Status</th></tr></thead>
-            <tbody className="divide-y">
-              {overview.recent_billing.length === 0 ? <tr><td colSpan={4} className="p-8 text-center text-gray-500">No billing activity yet.</td></tr> : overview.recent_billing.map((bill) => (
-                <tr key={bill.id}><td className="p-4">{new Date(bill.created_at).toLocaleString()}</td><td className="p-4">#{bill.patient_id}</td><td className="p-4">₹{Number(bill.amount).toFixed(2)}</td><td className="p-4 capitalize">{bill.status}</td></tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      </div>
-    </div>
-  )
+  const money = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' })
+  return <div className="space-y-6"><AutoRefresh interval={5000} />
+    <PageHeader eyebrow="Hospital administration" title="Hospital operations" description="A live view of patients, clinical staffing, appointments, and billing." />
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5"><StatCard label="Total patients" value={overview.total_patients} icon={UsersRound} href="/admin/patients" helper="Registered records" /><StatCard label="Total doctors" value={overview.total_doctors} icon={Stethoscope} href="/admin/doctors" helper="Clinical workforce" tone="info" /><StatCard label="Today's appointments" value={overview.today_appointments} icon={CalendarDays} href="/admin/appointments" helper="Scheduled today" tone="success" /><StatCard label="Pending bills" value={overview.pending_bills} icon={CircleDollarSign} href="/admin/billing" helper="Awaiting payment" tone="warning" /><StatCard label="Collected revenue" value={money.format(overview.collected_revenue)} icon={CircleDollarSign} href="/admin/billing" helper="Recorded receipts" tone="success" /></div>
+    <div className="grid gap-5 xl:grid-cols-2"><section className="hms-card overflow-hidden"><div className="border-b border-slate-200 px-5 py-4 dark:border-slate-800"><h2 className="font-bold">Recent appointments</h2><p className="mt-0.5 text-sm text-slate-500">Latest scheduling activity</p></div>{overview.recent_appointments.length === 0 ? <EmptyState title="No appointments yet" description="New appointment activity will appear here." /> : <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead><tr><th className="px-5 py-3 text-left">Date / time</th><th className="px-5 py-3 text-left">Patient</th><th className="px-5 py-3 text-left">Doctor</th><th className="px-5 py-3 text-left">Status</th></tr></thead><tbody className="divide-y">{overview.recent_appointments.map(item => <tr key={item.id}><td className="whitespace-nowrap px-5 py-4">{item.appt_date} {item.appt_time}</td><td className="px-5 py-4">#{item.patient_id}</td><td className="px-5 py-4">#{item.doctor_id}</td><td className="px-5 py-4"><StatusBadge status={item.status} /></td></tr>)}</tbody></table></div>}</section>
+      <section className="hms-card overflow-hidden"><div className="border-b border-slate-200 px-5 py-4 dark:border-slate-800"><h2 className="font-bold">Recent billing activity</h2><p className="mt-0.5 text-sm text-slate-500">Latest financial transactions</p></div>{overview.recent_billing.length === 0 ? <EmptyState title="No billing activity" description="New invoices and payments will appear here." /> : <div className="overflow-x-auto"><table className="min-w-full text-sm"><thead><tr><th className="px-5 py-3 text-left">Created</th><th className="px-5 py-3 text-left">Patient</th><th className="px-5 py-3 text-left">Amount</th><th className="px-5 py-3 text-left">Status</th></tr></thead><tbody className="divide-y">{overview.recent_billing.map(item => <tr key={item.id}><td className="whitespace-nowrap px-5 py-4">{new Date(item.created_at).toLocaleString()}</td><td className="px-5 py-4"><span className="inline-flex items-center gap-1"><UserRound className="h-4 w-4 text-brand-600" />#{item.patient_id}</span></td><td className="px-5 py-4 font-semibold">{money.format(Number(item.amount))}</td><td className="px-5 py-4"><StatusBadge status={item.status} /></td></tr>)}</tbody></table></div>}</section></div>
+  </div>
 }

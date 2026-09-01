@@ -1,94 +1,37 @@
 'use client'
 
+import { Plus } from 'lucide-react'
 import { useState } from 'react'
+
 import { addEmployeeAction } from '@/app/actions/admin'
-import { PlusCircle } from 'lucide-react'
 import SubmitButton from '@/components/SubmitButton'
+import { Modal } from '@/components/ui/Modal'
 
 export default function AddEmployeeModal() {
-  const [isOpen, setIsOpen] = useState(false)
+  const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
 
   async function action(formData: FormData) {
-    const res = await addEmployeeAction(formData)
-    if (res?.error) {
-      setError(res.error)
-    } else {
-      setIsOpen(false)
+    const response = await addEmployeeAction(formData)
+    if (response?.error) setError(response.error)
+    else {
+      setOpen(false)
       setError('')
     }
   }
 
-  return (
-    <>
-      <button 
-        onClick={() => setIsOpen(true)}
-        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
-      >
-        <PlusCircle className="w-5 h-5" />
-        Add Employee
-      </button>
-
-      {isOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-              <h2 className="text-xl font-bold text-gray-800">Add New Employee</h2>
-              <button onClick={() => setIsOpen(false)} className="text-gray-400 hover:text-gray-600">
-                ✕
-              </button>
-            </div>
-            
-            <form action={action} className="p-6 space-y-4">
-              {error && <div className="p-3 bg-red-50 text-red-600 rounded-lg text-sm">{error}</div>}
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                <input required type="text" name="name" className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none" />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input required type="email" name="email" className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none" />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                <input required type="password" name="password" className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none" />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Designation</label>
-                <select name="designation" className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none">
-                  <option value="Receptionist">Receptionist</option>
-                  <option value="Front Desk">Front Desk</option>
-                  <option value="Billing Agent">Billing Agent</option>
-                </select>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Shift Start</label>
-                  <input type="time" name="shift_start" className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Shift End</label>
-                  <input type="time" name="shift_end" className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none" />
-                </div>
-              </div>
-              
-              <div className="pt-4 flex justify-end gap-3">
-                <button type="button" onClick={() => setIsOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
-                  Cancel
-                </button>
-                <SubmitButton className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-sm">
-                  Save Employee
-                </SubmitButton>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </>
-  )
+  return <>
+    <button type="button" onClick={() => setOpen(true)} className="hms-button hms-button-primary"><Plus className="h-4 w-4" />Add employee</button>
+    <Modal open={open} onClose={() => setOpen(false)} title="Add employee" description="Create a front-desk or billing account. Access remains controlled by the assigned role.">
+      <form action={action} className="space-y-4">
+        {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
+        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Full name<span className="ml-1 text-rose-500">*</span><input required type="text" name="name" autoComplete="name" className="hms-input mt-1.5" /></label>
+        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Email address<span className="ml-1 text-rose-500">*</span><input required type="email" name="email" autoComplete="email" className="hms-input mt-1.5" /></label>
+        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Temporary password<span className="ml-1 text-rose-500">*</span><input required type="password" name="password" autoComplete="new-password" className="hms-input mt-1.5" /><span className="mt-1.5 block text-xs font-normal text-slate-500">Use uppercase, lowercase, a number, and a special character.</span></label>
+        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Designation<select name="designation" className="hms-input mt-1.5"><option value="Receptionist">Receptionist</option><option value="Front Desk">Front Desk</option><option value="Billing Agent">Billing Agent</option></select></label>
+        <div className="grid gap-4 sm:grid-cols-2"><label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Shift start<input type="time" name="shift_start" className="hms-input mt-1.5" /></label><label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Shift end<input type="time" name="shift_end" className="hms-input mt-1.5" /></label></div>
+        <div className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-end"><button type="button" onClick={() => setOpen(false)} className="hms-button hms-button-secondary">Cancel</button><SubmitButton>Save employee</SubmitButton></div>
+      </form>
+    </Modal>
+  </>
 }

@@ -9,7 +9,10 @@ import {
   statusClass,
   statusLabel,
 } from '@/lib/doctorTypes'
-import { startConsultationAction } from '@/app/actions/doctor'
+import {
+  confirmAssignedAppointmentAction,
+  startConsultationAction,
+} from '@/app/actions/doctor'
 import Link from 'next/link'
 
 export default async function DoctorAppointments() {
@@ -72,6 +75,24 @@ export default async function DoctorAppointments() {
                     <td className="px-5 py-4">
                       <div className="flex min-w-36 flex-col items-end gap-2">
                         <Link href={`/doctor/patients/${appointment.patient_id}`} className="text-sm font-semibold text-blue-700 hover:text-blue-800">View patient</Link>
+                        {appointment.status === 'requested' && (
+                          <ClientForm action={confirmAssignedAppointmentAction} successMessage="Appointment confirmed">
+                            <input type="hidden" name="appointment_id" value={appointment.id} />
+                            <input type="hidden" name="patient_id" value={appointment.patient_id} />
+                            <SubmitButton className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-800">
+                              Confirm appointment
+                            </SubmitButton>
+                          </ClientForm>
+                        )}
+                        {appointment.status === 'confirmed' && (
+                          <ClientForm action={startConsultationAction}>
+                            <input type="hidden" name="appointment_id" value={appointment.id} />
+                            <input type="hidden" name="patient_id" value={appointment.patient_id} />
+                            <SubmitButton className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-800">
+                              Start consultation
+                            </SubmitButton>
+                          </ClientForm>
+                        )}
                         {appointment.status === 'checked_in' && (
                           <ClientForm action={startConsultationAction}>
                             <input type="hidden" name="appointment_id" value={appointment.id} />

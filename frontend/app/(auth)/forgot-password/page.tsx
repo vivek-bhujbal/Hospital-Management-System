@@ -36,9 +36,7 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden">
-      <div className="absolute top-0 right-1/4 w-96 h-96 bg-purple-200 rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-blob"></div>
-      <div className="absolute bottom-0 left-1/4 w-96 h-96 bg-pink-200 rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-blob animation-delay-4000"></div>
+    <main id="main-content" className="hms-auth min-h-screen bg-[var(--hms-bg)] flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8">
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10">
         <Link href="/" className="flex justify-center mb-6 text-blue-600 hover:text-blue-800 transition-colors">
@@ -53,7 +51,7 @@ export default function ForgotPasswordPage() {
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md relative z-10">
-        <div className="bg-white/80 backdrop-blur-xl py-8 px-6 shadow-2xl shadow-blue-900/5 sm:rounded-2xl sm:px-10 border border-white">
+        <div className="hms-card py-8 px-6 sm:px-10">
           
           {error && (
             <div className="mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded-r-md">
@@ -76,7 +74,7 @@ export default function ForgotPasswordPage() {
             </div>
 
             <div className="pt-2">
-              <button type="submit" disabled={loading} className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-md text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 transition-all ${loading ? 'opacity-70 cursor-not-allowed' : 'hover:scale-[1.01]'}`}>
+              <button type="submit" disabled={loading} className={`hms-button hms-button-primary w-full ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}>
                 {loading ? 'Sending...' : 'Send Reset Link'}
               </button>
             </div>
@@ -89,6 +87,6 @@ export default function ForgotPasswordPage() {
           </div>
         </div>
       </div>
-    </div>
+    </main>
   )
 }

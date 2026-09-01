@@ -41,7 +41,8 @@ services:
     build:
       context: ./backend
     restart: "no"
-    env_file: .env
+    # Super Admin credentials are owned by the backend environment file.
+    env_file: ./backend/.env
     environment:
       DATABASE_URL: mysql+pymysql://${MYSQL_USER:-hospital_app}:${MYSQL_PASSWORD}@db/${MYSQL_DATABASE:-hospital_management}
     command: ["python", "-m", "app.services.super_admin_bootstrap"]
@@ -54,7 +55,7 @@ services:
       context: ./backend
     profiles: ["tools"]
     restart: "no"
-    env_file: .env
+    env_file: ./backend/.env
     environment:
       DATABASE_URL: mysql+pymysql://${MYSQL_USER:-hospital_app}:${MYSQL_PASSWORD}@db/${MYSQL_DATABASE:-hospital_management}
     command: ["python", "reset_db.py", "--confirm-database", "${MYSQL_DATABASE:-hospital_management}"]
@@ -67,7 +68,7 @@ services:
       context: ./backend
     profiles: ["tools"]
     restart: "no"
-    env_file: .env
+    env_file: ./backend/.env
     environment:
       DATABASE_URL: mysql+pymysql://${MYSQL_USER:-hospital_app}:${MYSQL_PASSWORD}@db/${MYSQL_DATABASE:-hospital_management}
     command: ["python", "verify_clean_database.py"]
@@ -79,7 +80,8 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
-    env_file: .env
+    # Runtime mail/auth configuration is maintained with the backend service.
+    env_file: ./backend/.env
     environment:
       DATABASE_URL: mysql+pymysql://${MYSQL_USER:-hospital_app}:${MYSQL_PASSWORD}@db/${MYSQL_DATABASE:-hospital_management}
       CELERY_BROKER_URL: redis://redis:6379/0
@@ -102,7 +104,7 @@ services:
       context: ./backend
     restart: unless-stopped
     command: ["celery", "-A", "app.celery_app.celery_app", "worker", "--loglevel=info", "--concurrency=4"]
-    env_file: .env
+    env_file: ./backend/.env
     environment:
       DATABASE_URL: mysql+pymysql://${MYSQL_USER:-hospital_app}:${MYSQL_PASSWORD}@db/${MYSQL_DATABASE:-hospital_management}
       CELERY_BROKER_URL: redis://redis:6379/0

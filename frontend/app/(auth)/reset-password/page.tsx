@@ -69,7 +69,7 @@ function ResetPasswordContent() {
         </div>
         <h2 className="text-2xl font-bold text-slate-900 mb-2">Password Reset Successfully</h2>
         <p className="text-slate-600 mb-8">You can now login with your new password.</p>
-        <Link href="/login" className="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-md text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 transition-all">
+        <Link href="/login" className="hms-button hms-button-primary w-full">
           Go to Login
         </Link>
       </div>
@@ -100,7 +100,7 @@ function ResetPasswordContent() {
         </div>
 
         <div className="pt-2">
-          <button type="submit" disabled={loading || !token} className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-md text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 transition-all ${loading || !token ? 'opacity-70 cursor-not-allowed' : 'hover:scale-[1.01]'}`}>
+          <button type="submit" disabled={loading || !token} className={`hms-button hms-button-primary w-full ${loading || !token ? 'opacity-70 cursor-not-allowed' : ''}`}>
             {loading ? 'Resetting...' : 'Reset Password'}
           </button>
         </div>
@@ -111,9 +111,7 @@ function ResetPasswordContent() {
 
 export default function ResetPasswordPage() {
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden">
-      <div className="absolute top-0 right-1/4 w-96 h-96 bg-purple-200 rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-blob"></div>
-      <div className="absolute bottom-0 left-1/4 w-96 h-96 bg-pink-200 rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-blob animation-delay-4000"></div>
+    <main id="main-content" className="hms-auth min-h-screen bg-[var(--hms-bg)] flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8">
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10 text-center mb-6">
         <h2 className="text-center text-3xl font-extrabold text-slate-900 tracking-tight">
@@ -126,6 +124,6 @@ export default function ResetPasswordPage() {
           <ResetPasswordContent />
         </Suspense>
       </div>
-    </div>
+    </main>
   )
 }
