@@ -7,6 +7,8 @@ from alembic.config import Config
 from sqlalchemy.engine import make_url
 
 from app.core.config import settings
+from app.database import SessionLocal
+from app.services.super_admin_bootstrap import bootstrap_super_admin_from_settings
 
 
 def _database_name() -> str:
@@ -42,7 +44,16 @@ def _alembic_config() -> Config:
 def init_db() -> None:
     _ensure_database_exists()
     command.upgrade(_alembic_config(), "head")
-    print("Database migration completed successfully; no seed data was added.")
+    db = SessionLocal()
+    try:
+        result = bootstrap_super_admin_from_settings(db)
+    finally:
+        db.close()
+    action = "created" if result.created else "verified"
+    print(
+        "Database migration completed successfully; no business seed data was added. "
+        f"Super Admin {action}."
+    )
 
 
 if __name__ == "__main__":

@@ -819,7 +819,7 @@ class LabOrderCreate(BaseModel):
 class LabOrderItemBase(BaseModel):
     order_id: int
     test_id: int
-    status: Literal['ordered', 'sample_collected', 'processing', 'completed', 'verified', 'cancelled'] = 'ordered'
+    status: Literal['ordered', 'sample_collected', 'processing', 'completed', 'cancelled'] = 'ordered'
 
 class LabOrderItemResponse(LabOrderItemBase):
     id: int
@@ -883,11 +883,12 @@ class RadiologyOrderBase(BaseModel):
     patient_id: int
     doctor_id: int
     appointment_id: Optional[int] = None
+    assigned_radiologist_id: Optional[int] = None
     modality_id: int
     body_part: Optional[str] = None
     clinical_notes: Optional[str] = None
     priority: Literal['routine', 'urgent', 'stat'] = 'routine'
-    status: Literal['ordered', 'scheduled', 'performed', 'reporting', 'verified', 'cancelled'] = 'ordered'
+    status: Literal['ordered', 'scheduled', 'performed', 'reviewing', 'reporting', 'completed', 'cancelled'] = 'ordered'
 
 class RadiologyOrderResponse(RadiologyOrderBase):
     id: int
@@ -925,7 +926,9 @@ class RadiologyReportBase(BaseModel):
     findings: Optional[str] = None
     impression: Optional[str] = None
     recommendations: Optional[str] = None
-    status: Literal['draft', 'verified'] = 'draft'
+    radiologist_notes: Optional[str] = None
+    amendment_reason: Optional[str] = None
+    status: Literal['draft', 'finalized'] = 'draft'
     version: Optional[int] = 1
     parent_report_id: Optional[int] = None
 
@@ -934,24 +937,33 @@ class RadiologyReportCreate(BaseModel):
     findings: Optional[str] = None
     impression: Optional[str] = None
     recommendations: Optional[str] = None
+    radiologist_notes: Optional[str] = None
 
 class RadiologyReportUpdate(BaseModel):
     findings: Optional[str] = None
     impression: Optional[str] = None
     recommendations: Optional[str] = None
+    radiologist_notes: Optional[str] = None
+
+
+class RadiologyAmendmentCreate(RadiologyReportUpdate):
+    amendment_reason: str = Field(min_length=3, max_length=2000)
 
 class RadiologyReportResponse(RadiologyReportBase):
     id: int
     radiologist_id: int
     created_at: datetime
     updated_at: datetime
-    verified_at: Optional[datetime] = None
+    finalized_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
 
 # Accountant / Financial Feature Schemas
 class ExpenseCategoryBase(BaseModel):
-    name: str
-    description: Optional[str] = None
+    name: str = Field(min_length=2, max_length=100)
+    description: Optional[str] = Field(default=None, max_length=1000)
+
+class ExpenseCategoryCreate(ExpenseCategoryBase):
+    pass
 
 class ExpenseCategoryResponse(ExpenseCategoryBase):
     id: int
@@ -960,7 +972,8 @@ class ExpenseCategoryResponse(ExpenseCategoryBase):
 class ExpenseBase(BaseModel):
     category_id: int
     amount: Decimal = Field(gt=0, decimal_places=2)
-    description: Optional[str] = None
+    description: Optional[str] = Field(default=None, max_length=2000)
+    supporting_reference: Optional[str] = Field(default=None, max_length=255)
     incurred_date: date
     idempotency_key: str = Field(min_length=8, max_length=191)
 
@@ -1014,6 +1027,9 @@ class DailyClosingResponse(DailyClosingBase):
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
+class AccountantPaymentCreate(BaseModel):
+    payment_method: PaymentMethodEnum
+
 # Insurance Feature Schemas
 class InsuranceProviderBase(BaseModel):
     name: str
@@ -1057,11 +1073,25 @@ class InsuranceClaimBase(BaseModel):
     amount_claimed: Decimal = Field(gt=0, decimal_places=2)
 
 class InsuranceClaimCreate(InsuranceClaimBase):
-    pass
+    billing_id: int
 
 class InsuranceClaimStatusUpdate(BaseModel):
-    status: Literal['draft', 'submitted', 'under_review', 'approved', 'partially_approved', 'rejected', 'settled', 'cancelled']
+    status: Literal['draft', 'submitted', 'under_review', 'approved', 'rejected', 'settled']
     approved_amount: Optional[Decimal] = Field(default=None, ge=0, decimal_places=2)
+
+class InsuranceDocumentRequest(BaseModel):
+    reason: str = Field(min_length=3, max_length=2000)
+
+class InsuranceClaimDecision(BaseModel):
+    decision: Literal['approved', 'rejected']
+    reason: str = Field(min_length=3, max_length=2000)
+    approved_amount: Optional[Decimal] = Field(default=None, gt=0, decimal_places=2)
+
+class InsuranceSettlementCreate(BaseModel):
+    amount_paid: Decimal = Field(gt=0, decimal_places=2)
+    payment_date: date
+    transaction_reference: str = Field(min_length=4, max_length=150)
+    reason: str = Field(min_length=3, max_length=2000)
 
 class InsuranceClaimResponse(InsuranceClaimBase):
     id: int
@@ -1111,9 +1141,9 @@ class InsurancePaymentResponse(InsurancePaymentBase):
 
 # Ambulance Feature Schemas
 class AmbulanceBase(BaseModel):
-    vehicle_number: str
-    vehicle_type: Optional[str] = None
-    status: Literal['available', 'dispatched', 'on_route', 'arrived', 'transporting', 'completed', 'maintenance', 'unavailable'] = 'available'
+    vehicle_number: str = Field(min_length=1, max_length=50)
+    vehicle_type: Optional[str] = Field(default=None, max_length=100)
+    status: Literal['available', 'assigned', 'en_route', 'arrived', 'transporting', 'maintenance', 'unavailable'] = 'available'
     capacity: Optional[int] = Field(default=None, gt=0)
 
 class AmbulanceResponse(AmbulanceBase):
@@ -1125,11 +1155,16 @@ class AmbulanceResponse(AmbulanceBase):
 class AmbulanceCreate(AmbulanceBase):
     status: Literal['available', 'maintenance', 'unavailable'] = 'available'
 
+
+class AmbulanceAvailabilityUpdate(BaseModel):
+    status: Literal['available', 'maintenance', 'unavailable']
+
 class AmbulanceRequestBase(BaseModel):
     patient_id: Optional[int] = None
-    requester_name: Optional[str] = None
-    requester_contact: Optional[str] = None
-    pickup_location: str
+    requester_name: Optional[str] = Field(default=None, max_length=150)
+    requester_contact: Optional[str] = Field(default=None, max_length=50)
+    pickup_location: str = Field(min_length=3, max_length=2000)
+    destination: str = Field(min_length=3, max_length=2000)
     priority: Literal['low', 'medium', 'high', 'critical'] = 'high'
 
 class AmbulanceRequestCreate(AmbulanceRequestBase):
@@ -1147,7 +1182,9 @@ class AmbulanceTripBase(BaseModel):
 
 class AmbulanceTripResponse(AmbulanceTripBase):
     id: int
+    staff_id: int
     status: str
+    accepted_at: datetime
     start_time: Optional[datetime]
     pickup_time: Optional[datetime]
     arrival_time: Optional[datetime]
@@ -1155,13 +1192,17 @@ class AmbulanceTripResponse(AmbulanceTripBase):
     model_config = ConfigDict(from_attributes=True)
 
 class AmbulanceTripStatusUpdate(BaseModel):
-    status: Literal['accepted', 'on_route', 'pickup', 'transporting', 'arrived', 'completed', 'cancelled']
+    status: Literal['en_route', 'arrived', 'transporting', 'completed']
 
 
 class AmbulanceDispatchCreate(BaseModel):
     request_id: int
     ambulance_id: int
-    staff_id: int
+    staff_id: Optional[int] = None
+
+
+class AmbulanceAcceptAssignment(BaseModel):
+    ambulance_id: int
 
 
 class NotificationPreferenceUpdate(BaseModel):

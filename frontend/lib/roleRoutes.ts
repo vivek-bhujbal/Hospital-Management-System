@@ -10,7 +10,7 @@ export const ROLE_HOME: Record<UserRole, string> = {
   nurse: '/nurse/home',
   pharmacist: '/pharmacist/home',
   lab_technician: '/lab/home',
-  radiologist: '/radiology/home',
+  radiologist: '/radiologist/home',
   accountant: '/accountant/home',
   insurance_officer: '/insurance/home',
   ambulance_staff: '/ambulance/home',
@@ -59,6 +59,30 @@ const LAB_TECHNICIAN_ROUTES: ReadonlySet<string> = new Set([
   '/lab/orders',
   '/lab/results',
 ])
+const RADIOLOGIST_ROUTES: ReadonlySet<string> = new Set([
+  '/radiologist/home',
+  '/radiologist/orders',
+  '/radiologist/reports',
+])
+const ACCOUNTANT_ROUTES: ReadonlySet<string> = new Set([
+  '/accountant/home',
+  '/accountant/invoices',
+  '/accountant/payments',
+  '/accountant/expenses',
+  '/accountant/reports',
+])
+const INSURANCE_ROUTES: ReadonlySet<string> = new Set([
+  '/insurance/home',
+  '/insurance/patients',
+  '/insurance/claims',
+  '/insurance/approvals',
+])
+const AMBULANCE_ROUTES: ReadonlySet<string> = new Set([
+  '/ambulance/home',
+  '/ambulance/requests',
+  '/ambulance/trips',
+  '/ambulance/vehicles',
+])
 const PORTAL_ROLES: readonly (readonly [string, UserRole])[] = [
   ['/patient', 'patient'],
   ['/doctor', 'doctor'],
@@ -69,7 +93,7 @@ const PORTAL_ROLES: readonly (readonly [string, UserRole])[] = [
   ['/nurse', 'nurse'],
   ['/pharmacist', 'pharmacist'],
   ['/lab', 'lab_technician'],
-  ['/radiology', 'radiologist'],
+  ['/radiologist', 'radiologist'],
   ['/accountant', 'accountant'],
   ['/insurance', 'insurance_officer'],
   ['/ambulance', 'ambulance_staff'],
@@ -91,6 +115,18 @@ function isLabTechnicianRoute(pathname: string): boolean {
   return LAB_TECHNICIAN_ROUTES.has(pathname) || /^\/lab\/orders\/\d+$/.test(pathname)
 }
 
+function isRadiologistRoute(pathname: string): boolean {
+  return RADIOLOGIST_ROUTES.has(pathname) || /^\/radiologist\/orders\/\d+$/.test(pathname)
+}
+
+function isInsuranceRoute(pathname: string): boolean {
+  return INSURANCE_ROUTES.has(pathname) || /^\/insurance\/claims\/\d+$/.test(pathname)
+}
+
+function isAmbulanceRoute(pathname: string): boolean {
+  return AMBULANCE_ROUTES.has(pathname) || /^\/ambulance\/requests\/\d+$/.test(pathname)
+}
+
 export function isUserRole(value: unknown): value is UserRole {
   return typeof value === 'string' && ROLE_VALUES.has(value)
 }
@@ -103,7 +139,8 @@ export function protectedPortalRedirect(
   pathname: string,
   role: unknown,
 ): string | null {
-  if (pathname === '/pharmacy' || pathname.startsWith('/pharmacy/')) {
+  if (pathname === '/pharmacy' || pathname.startsWith('/pharmacy/')
+      || pathname === '/radiology' || pathname.startsWith('/radiology/')) {
     return isUserRole(role) ? ROLE_HOME[role] : '/login'
   }
   const isReceptionistPath = pathname === '/receptionist' || pathname.startsWith('/receptionist/')
@@ -137,6 +174,18 @@ export function protectedPortalRedirect(
     return isUserRole(role) ? ROLE_HOME[role] : '/login'
   }
   if ((pathname === '/lab' || pathname.startsWith('/lab/')) && !isLabTechnicianRoute(pathname)) {
+    return isUserRole(role) ? ROLE_HOME[role] : '/login'
+  }
+  if ((pathname === '/radiologist' || pathname.startsWith('/radiologist/')) && !isRadiologistRoute(pathname)) {
+    return isUserRole(role) ? ROLE_HOME[role] : '/login'
+  }
+  if ((pathname === '/accountant' || pathname.startsWith('/accountant/')) && !ACCOUNTANT_ROUTES.has(pathname)) {
+    return isUserRole(role) ? ROLE_HOME[role] : '/login'
+  }
+  if ((pathname === '/insurance' || pathname.startsWith('/insurance/')) && !isInsuranceRoute(pathname)) {
+    return isUserRole(role) ? ROLE_HOME[role] : '/login'
+  }
+  if ((pathname === '/ambulance' || pathname.startsWith('/ambulance/')) && !isAmbulanceRoute(pathname)) {
     return isUserRole(role) ? ROLE_HOME[role] : '/login'
   }
   if (!isUserRole(role)) return null

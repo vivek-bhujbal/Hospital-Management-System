@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:3000"
     CELERY_BROKER_URL: str = "redis://localhost:6379/0"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"
+    APP_ENV: str = "development"
+
+    SUPER_ADMIN_EMAIL: str | None = None
+    SUPER_ADMIN_PASSWORD: str | None = None
+    SUPER_ADMIN_NAME: str | None = None
 
     @property
     def cors_origins(self) -> list[str]:

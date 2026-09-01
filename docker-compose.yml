@@ -37,6 +37,44 @@ services:
       db:
         condition: service_healthy
 
+  bootstrap:
+    build:
+      context: ./backend
+    restart: "no"
+    env_file: .env
+    environment:
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-hospital_app}:${MYSQL_PASSWORD}@db/${MYSQL_DATABASE:-hospital_management}
+    command: ["python", "-m", "app.services.super_admin_bootstrap"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  reset:
+    build:
+      context: ./backend
+    profiles: ["tools"]
+    restart: "no"
+    env_file: .env
+    environment:
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-hospital_app}:${MYSQL_PASSWORD}@db/${MYSQL_DATABASE:-hospital_management}
+    command: ["python", "reset_db.py", "--confirm-database", "${MYSQL_DATABASE:-hospital_management}"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  verify-clean-db:
+    build:
+      context: ./backend
+    profiles: ["tools"]
+    restart: "no"
+    env_file: .env
+    environment:
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-hospital_app}:${MYSQL_PASSWORD}@db/${MYSQL_DATABASE:-hospital_management}
+    command: ["python", "verify_clean_database.py"]
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+
   backend:
     build:
       context: ./backend
@@ -54,7 +92,7 @@ services:
       timeout: 5s
       retries: 5
     depends_on:
-      migrate:
+      bootstrap:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
@@ -70,7 +108,7 @@ services:
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
     depends_on:
-      migrate:
+      bootstrap:
         condition: service_completed_successfully
       redis:
         condition: service_healthy

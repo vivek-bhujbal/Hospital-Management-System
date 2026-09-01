@@ -427,8 +427,5 @@ def get_billing_report(db: Session = Depends(get_db), current_user: User = Depen
 def get_settings(db: Session = Depends(get_db), current_user = Depends(allow_settings_view)):
     setting = db.query(HospitalSetting).first()
     if not setting:
-        setting = HospitalSetting(hospital_name="Demo Hospital", address="123 Health St", phone="555-0100", gstin="GSTIN123456")
-        db.add(setting)
-        db.commit()
-        db.refresh(setting)
+        raise HTTPException(status_code=404, detail="Hospital settings are not configured")
     return setting

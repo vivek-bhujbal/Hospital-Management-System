@@ -1,5 +1,9 @@
 # Hospital Management System
 
+> The Docker stack uses Alembic plus an idempotent, environment-owned Super
+> Admin bootstrap. For the deliberate one-time MySQL reset procedure and its
+> safety guards, see [`docs/database-reset.md`](docs/database-reset.md).
+
 A full-stack, end-to-end Hospital Management platform built with a FastAPI backend and Next.js frontend. It features 4 distinct modules with real-time UI polling, JWT-based authentication, and a scalable MySQL database.
 
 ## 🚀 Tech Stack

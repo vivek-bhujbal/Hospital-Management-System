@@ -20,6 +20,7 @@ def test_admin_is_forbidden_from_every_super_admin_read_api(client, create_user,
     auth = headers(login(admin))
     paths = [
         "/super-admin/overview",
+        "/super-admin/users",
         "/super-admin/admins",
         "/super-admin/hospitals",
         "/super-admin/roles-permissions",
@@ -30,6 +31,33 @@ def test_admin_is_forbidden_from_every_super_admin_read_api(client, create_user,
     ]
     for path in paths:
         assert client.get(path, headers=auth).status_code == 403, path
+
+
+def test_super_admin_can_list_all_users_without_secret_fields(
+    client, create_user, login
+):
+    super_admin = create_user("super_admin")
+    admin = create_user("admin")
+    doctor = create_user("doctor")
+
+    response = client.get(
+        "/super-admin/users", headers=headers(login(super_admin))
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert {item["id"] for item in payload} == {
+        super_admin.id,
+        admin.id,
+        doctor.id,
+    }
+    assert {item["role"] for item in payload} == {
+        "super_admin",
+        "admin",
+        "doctor",
+    }
+    assert all("password" not in item for item in payload)
+    assert all("token" not in item for item in payload)
 
 
 def test_admin_is_forbidden_from_super_admin_mutations(client, create_user, login):
@@ -140,6 +168,25 @@ def test_admin_cannot_self_promote_or_change_any_role(client, create_user, login
         json={"role": "super_admin"},
         headers=auth,
     ).status_code == 403
+
+
+def test_super_admin_role_is_environment_owned_and_not_assignable_via_api(
+    client, create_user, login
+):
+    super_admin = create_user("super_admin")
+    target = create_user("doctor")
+    auth = headers(login(super_admin))
+
+    assert client.patch(
+        f"/rbac/users/{target.id}/role",
+        json={"role": "super_admin"},
+        headers=auth,
+    ).status_code == 409
+    assert client.patch(
+        f"/rbac/users/{super_admin.id}/role",
+        json={"role": "admin"},
+        headers=auth,
+    ).status_code == 409
 
 
 def test_super_admin_cannot_access_admin_operational_apis(client, create_user, login):

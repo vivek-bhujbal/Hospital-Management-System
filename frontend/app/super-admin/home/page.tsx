@@ -34,7 +34,7 @@ export default async function SuperAdminDashboard() {
     ['Organizations', overview.total_organizations, '/super-admin/hospitals'],
     ['Administrators', overview.total_admins, '/super-admin/admins'],
     ['Active admins', overview.active_admins, '/super-admin/admins'],
-    ['Total users', overview.total_users, '/super-admin/admins'],
+    ['Total users', overview.total_users, '/super-admin/users'],
     ['Role grants', overview.role_permission_grants, '/super-admin/permissions'],
     ['System settings', overview.system_settings, '/super-admin/settings'],
     ['Feature flags', overview.feature_flags, '/super-admin/features'],

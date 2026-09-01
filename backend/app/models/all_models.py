@@ -439,6 +439,7 @@ class LabOrder(Base):
     __table_args__ = (
         Index('ix_lab_orders_patient_status', 'patient_id', 'status'),
         Index('ix_lab_orders_doctor_ordered', 'doctor_id', 'ordered_at'),
+        Index('ix_lab_orders_assignee_status', 'assigned_technician_id', 'status'),
     )
     id = Column(Integer, primary_key=True, index=True)
     patient_id = Column(Integer, ForeignKey('patients.id'), nullable=False)
@@ -458,7 +459,7 @@ class LabOrderItem(Base):
     id = Column(Integer, primary_key=True, index=True)
     order_id = Column(Integer, ForeignKey('lab_orders.id'), nullable=False)
     test_id = Column(Integer, ForeignKey('lab_tests.id'), nullable=False)
-    status = Column(Enum('ordered', 'sample_collected', 'processing', 'completed', 'verified', 'cancelled'), default='ordered')
+    status = Column(Enum('ordered', 'sample_collected', 'processing', 'completed', 'cancelled'), default='ordered')
 
 class LabSample(Base):
     __tablename__ = 'lab_samples'
@@ -508,21 +509,25 @@ class RadiologyOrder(Base):
     __table_args__ = (
         Index('ix_radiology_orders_patient_status', 'patient_id', 'status'),
         Index('ix_radiology_orders_doctor_ordered', 'doctor_id', 'ordered_at'),
+        Index('ix_radiology_orders_assignee_status', 'assigned_radiologist_id', 'status'),
     )
     id = Column(Integer, primary_key=True, index=True)
     patient_id = Column(Integer, ForeignKey('patients.id'), nullable=False)
     doctor_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     appointment_id = Column(Integer, ForeignKey('appointments.id'), nullable=True)
+    assigned_radiologist_id = Column(Integer, ForeignKey('users.id'), nullable=True)
     modality_id = Column(Integer, ForeignKey('radiology_modalities.id'), nullable=False)
     body_part = Column(String(150))
     clinical_notes = Column(Text)
     priority = Column(Enum('routine', 'urgent', 'stat'), default='routine')
-    status = Column(Enum('ordered', 'scheduled', 'performed', 'reporting', 'verified', 'cancelled'), default='ordered')
+    status = Column(Enum('ordered', 'scheduled', 'performed', 'reviewing', 'reporting', 'completed', 'cancelled'), default='ordered')
+    review_started_at = Column(TIMESTAMP, nullable=True)
     ordered_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
 class RadiologyStudy(Base):
     __tablename__ = 'radiology_studies'
+    __table_args__ = (UniqueConstraint('order_id', name='uq_radiology_study_order'),)
     id = Column(Integer, primary_key=True, index=True)
     order_id = Column(Integer, ForeignKey('radiology_orders.id'), nullable=False)
     study_identifier = Column(String(150), unique=True, nullable=False)
@@ -540,12 +545,14 @@ class RadiologyReport(Base):
     findings = Column(Text)
     impression = Column(Text)
     recommendations = Column(Text)
-    status = Column(Enum('draft', 'verified'), default='draft')
+    radiologist_notes = Column(Text)
+    amendment_reason = Column(Text)
+    status = Column(Enum('draft', 'finalized'), default='draft')
     version = Column(Integer, default=1)
     parent_report_id = Column(Integer, ForeignKey('radiology_reports.id'), nullable=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
-    verified_at = Column(TIMESTAMP, nullable=True)
+    finalized_at = Column(TIMESTAMP, nullable=True)
 
 class ExpenseCategory(Base):
     __tablename__ = 'expense_categories'
@@ -562,6 +569,7 @@ class Expense(Base):
     category_id = Column(Integer, ForeignKey('expense_categories.id'), nullable=False)
     amount = Column(DECIMAL(10,2), nullable=False)
     description = Column(Text)
+    supporting_reference = Column(String(255))
     incurred_date = Column(Date, nullable=False)
     recorded_by = Column(Integer, ForeignKey('users.id'), nullable=False)
     idempotency_key = Column(String(191), nullable=False, unique=True)
@@ -639,6 +647,7 @@ class InsuranceClaim(Base):
     __table_args__ = (
         CheckConstraint('amount_claimed > 0', name='ck_insurance_claim_amount_positive'),
         CheckConstraint('approved_amount IS NULL OR approved_amount >= 0', name='ck_insurance_approved_nonnegative'),
+        UniqueConstraint('billing_id', name='uq_insurance_claim_billing'),
         Index('ix_insurance_claim_status_updated', 'status', 'updated_at'),
     )
     id = Column(Integer, primary_key=True, index=True)
@@ -646,8 +655,12 @@ class InsuranceClaim(Base):
     billing_id = Column(Integer, ForeignKey('billing.id'), nullable=True)
     amount_claimed = Column(DECIMAL(10,2), nullable=False)
     approved_amount = Column(DECIMAL(10,2), nullable=True)
-    status = Column(Enum('draft', 'submitted', 'under_review', 'approved', 'partially_approved', 'rejected', 'settled', 'cancelled'), default='draft')
+    status = Column(Enum('draft', 'submitted', 'under_review', 'approved', 'rejected', 'settled'), default='draft')
+    documents_required = Column(Boolean, default=False, nullable=False)
     officer_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    submitted_at = Column(TIMESTAMP, nullable=True)
+    decided_at = Column(TIMESTAMP, nullable=True)
+    settled_at = Column(TIMESTAMP, nullable=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
@@ -664,7 +677,20 @@ class InsuranceDocument(Base):
     id = Column(Integer, primary_key=True, index=True)
     claim_id = Column(Integer, ForeignKey('insurance_claims.id', ondelete='CASCADE'), nullable=False)
     document_reference = Column(String(255), nullable=False)
+    linked_by = Column(Integer, ForeignKey('users.id'), nullable=True)
     uploaded_at = Column(TIMESTAMP, server_default=func.now())
+
+class InsuranceClaimAction(Base):
+    __tablename__ = 'insurance_claim_actions'
+    __table_args__ = (Index('ix_insurance_claim_actions_claim_created', 'claim_id', 'created_at'),)
+    id = Column(Integer, primary_key=True, index=True)
+    claim_id = Column(Integer, ForeignKey('insurance_claims.id', ondelete='CASCADE'), nullable=False)
+    officer_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    action = Column(String(50), nullable=False)
+    from_status = Column(String(30), nullable=True)
+    to_status = Column(String(30), nullable=True)
+    reason = Column(Text, nullable=True)
+    created_at = Column(TIMESTAMP, server_default=func.now(), nullable=False)
 
 class InsurancePayment(Base):
     __tablename__ = 'insurance_payments'
@@ -682,17 +708,21 @@ class InsurancePayment(Base):
 
 class Ambulance(Base):
     __tablename__ = 'ambulances'
+    __table_args__ = (CheckConstraint('capacity IS NULL OR capacity > 0', name='ck_ambulance_capacity_positive'),)
     id = Column(Integer, primary_key=True, index=True)
     vehicle_number = Column(String(50), nullable=False, unique=True)
     vehicle_type = Column(String(100))
-    status = Column(Enum('available', 'dispatched', 'on_route', 'arrived', 'transporting', 'completed', 'maintenance', 'unavailable'), default='available')
+    status = Column(Enum('available', 'assigned', 'en_route', 'arrived', 'transporting', 'maintenance', 'unavailable'), default='available', nullable=False)
     capacity = Column(Integer)
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
 class AmbulanceStaffAssignment(Base):
     __tablename__ = 'ambulance_staff_assignments'
-    __table_args__ = (UniqueConstraint('ambulance_id', 'staff_id', name='uq_ambulance_staff_assignment'),)
+    __table_args__ = (
+        UniqueConstraint('ambulance_id', 'staff_id', name='uq_ambulance_staff_assignment'),
+        Index('ix_ambulance_assignment_staff_status', 'staff_id', 'status'),
+    )
     id = Column(Integer, primary_key=True, index=True)
     ambulance_id = Column(Integer, ForeignKey('ambulances.id'), nullable=False)
     staff_id = Column(Integer, ForeignKey('users.id'), nullable=False)
@@ -701,23 +731,30 @@ class AmbulanceStaffAssignment(Base):
 
 class AmbulanceRequest(Base):
     __tablename__ = 'ambulance_requests'
+    __table_args__ = (Index('ix_ambulance_request_status_priority', 'status', 'priority', 'requested_at'),)
     id = Column(Integer, primary_key=True, index=True)
     patient_id = Column(Integer, ForeignKey('patients.id'), nullable=True)
     requester_name = Column(String(150))
     requester_contact = Column(String(50))
     pickup_location = Column(Text, nullable=False)
+    destination = Column(Text, nullable=True)
     priority = Column(Enum('low', 'medium', 'high', 'critical'), default='high')
-    status = Column(Enum('requested', 'approved', 'dispatched', 'accepted', 'pickup', 'transporting', 'arrived', 'completed', 'cancelled'), default='requested')
+    status = Column(Enum('requested', 'assigned', 'en_route', 'arrived', 'transporting', 'completed', 'cancelled'), default='requested', nullable=False)
     requested_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
 class AmbulanceTrip(Base):
     __tablename__ = 'ambulance_trips'
-    __table_args__ = (UniqueConstraint('request_id', name='uq_ambulance_trip_request'),)
+    __table_args__ = (
+        UniqueConstraint('request_id', name='uq_ambulance_trip_request'),
+        Index('ix_ambulance_trip_staff_status', 'staff_id', 'status'),
+    )
     id = Column(Integer, primary_key=True, index=True)
     request_id = Column(Integer, ForeignKey('ambulance_requests.id'), nullable=False)
     ambulance_id = Column(Integer, ForeignKey('ambulances.id'), nullable=False)
-    status = Column(Enum('dispatched', 'accepted', 'on_route', 'pickup', 'transporting', 'arrived', 'completed', 'cancelled'), default='dispatched')
+    staff_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    status = Column(Enum('assigned', 'en_route', 'arrived', 'transporting', 'completed', 'cancelled'), default='assigned', nullable=False)
+    accepted_at = Column(TIMESTAMP, server_default=func.now(), nullable=False)
     start_time = Column(TIMESTAMP, nullable=True)
     pickup_time = Column(TIMESTAMP, nullable=True)
     arrival_time = Column(TIMESTAMP, nullable=True)
@@ -726,8 +763,12 @@ class AmbulanceTrip(Base):
 
 class AmbulanceStatusHistory(Base):
     __tablename__ = 'ambulance_status_history'
+    __table_args__ = (Index('ix_ambulance_history_request_recorded', 'request_id', 'recorded_at'),)
     id = Column(Integer, primary_key=True, index=True)
     ambulance_id = Column(Integer, ForeignKey('ambulances.id'), nullable=False)
+    request_id = Column(Integer, ForeignKey('ambulance_requests.id'), nullable=True)
+    trip_id = Column(Integer, ForeignKey('ambulance_trips.id'), nullable=True)
+    old_status = Column(String(50), nullable=True)
     status = Column(String(50), nullable=False)
     recorded_by = Column(Integer, ForeignKey('users.id'), nullable=False)
     recorded_at = Column(TIMESTAMP, server_default=func.now())

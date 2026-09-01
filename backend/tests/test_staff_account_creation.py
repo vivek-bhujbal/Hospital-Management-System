@@ -40,6 +40,12 @@ def test_only_super_admin_can_create_admin_and_creation_is_audited(
     account = db.query(User).filter_by(email=payload["email"]).one()
     assert account.is_email_verified is True
     assert account.password_hash != payload["password"]
+    login_response = client.post(
+        "/auth/login",
+        json={"email": payload["email"], "password": payload["password"]},
+    )
+    assert login_response.status_code == 200
+    assert login_response.json()["role"] == "admin"
     event = db.query(AuditLog).filter_by(action="admin.created").one()
     assert event.actor_user_id == super_admin.id
     assert "password" not in event.new_values

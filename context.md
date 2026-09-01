@@ -1,6 +1,6 @@
 # Hospital Management System — Project Context
 
-> Last reconciled with the authorization-separation working tree based on branch `main` at commit `a76521a` on 2026-08-30.
+> Last reconciled with the authorization-separation working tree based on branch `main` at commit `a76521a` on 2026-09-01.
 >
 > This document describes the application as it currently exists in code. When this file conflicts with the README or older walkthrough notes, treat the implementation files named here as the source of truth.
 
@@ -15,7 +15,7 @@ The application supports thirteen user roles. The original roles remain backward
 - `receptionist`: registers walk-in patients, schedules and checks in appointments, and collects payments, subject to per-employee permissions.
 - `admin`: views hospital-wide metrics and manages doctors, receptionist employees, permissions, patients, appointments, and billing reports.
 
-Enterprise roles are `super_admin`, `hospital_manager`, `nurse`, `pharmacist`, `lab_technician`, `radiologist`, `accountant`, `insurance_officer`, and `ambulance_staff`. Hospital Manager is a read-only hospital-operations role; it monitors patient flow, appointments, staffing, doctors, departments, reports, and revenue summaries without accessing clinical, financial-transaction, or specialist operational modules. Pharmacist is an exact-role pharmacy operator with read-only access to doctor prescriptions, a separate verification state machine, batch inventory adjustments, and atomic dispensing. Lab Technician is an exact-role laboratory operator with assignment-scoped orders, guarded sample/test transitions, draft results, and immutable finalized results. The other backend modules cover organizations/settings/audit, assignment-scoped nursing, radiology studies/reports, accounting, insurance claims, and ambulance dispatch. The frontend exposes authenticated live-data portals for each role.
+Enterprise roles are `super_admin`, `hospital_manager`, `nurse`, `pharmacist`, `lab_technician`, `radiologist`, `accountant`, `insurance_officer`, and `ambulance_staff`. Hospital Manager is a read-only hospital-operations role; it monitors patient flow, appointments, staffing, doctors, departments, reports, and revenue summaries without accessing clinical, financial-transaction, or specialist operational modules. Pharmacist is an exact-role pharmacy operator with read-only access to doctor prescriptions, a separate verification state machine, batch inventory adjustments, and atomic dispensing. Lab Technician is an exact-role laboratory operator with assignment-scoped orders, guarded sample/test transitions, draft results, and immutable finalized results. Radiologist is an exact-role imaging operator with assignment-scoped orders, one study per order, guarded interpretation/report transitions, and immutable finalized report versions with explicit amendments. Accountant is an exact-role finance operator with appointment-backed invoices, duplicate-safe payments, append-only audited expenses, and non-clinical financial reporting. Insurance Officer is an exact-role insurance operator with policy verification, one claim per invoice, guarded review/decision/settlement transitions, required-document tracking, and immutable officer-attributed action history. Ambulance Staff is an exact-role transport operator with assigned vehicles, shared pending requests, staff-owned trips, guarded status transitions, and audited history. The other backend modules cover organizations/settings/audit and assignment-scoped nursing. The frontend exposes authenticated live-data portals for each role.
 
 The active application is the nested repository at `Hospital-Management-System/`. Python files named `generate_*.py`, `setup_*.py`, and frontend refactoring scripts are development/scaffolding utilities; they are not part of the runtime request path.
 
@@ -29,6 +29,10 @@ The active application is the nested repository at `Hospital-Management-System/`
 - Admin doctor create/update/password-reset/delete operations now write sanitized audit events. Existing employee creation/update/deactivation/permission audit events remain intact.
 - A Super Admin can reset an Admin account password from `/super-admin/admins/[id]`. The backend enforces the shared password-strength policy, restricts targets to the `admin` role, clears outstanding password-reset tokens, hashes the replacement password, and writes a secret-free audit event.
 - Organization isolation is intentionally deferred; `docs/organization-scoping-plan.md` defines an additive expand/backfill/validate/enforce rollout that preserves existing data.
+- Radiologist now has a dedicated `/radiologist/*` portal and exact-role, assignment-scoped imaging APIs. One-study-per-order integrity, guarded review/report states, finalized-report locking, and audited reason-required amendment versions are enforced in the backend.
+- Accountant now has a dedicated five-page `/accountant/*` portal and exact-role finance API. Invoice-backed payment locking, transaction uniqueness, expense idempotency/supporting references, append-only records, and audit events protect every financial mutation.
+- Insurance Officer now has a dedicated `/insurance/*` portal and exact-role claim API. Database uniqueness blocks duplicate invoice claims; guarded submission, review, document, decision, and insurance-settlement actions record Officer, timestamp, status, and reason history without exposing clinical fields.
+- Ambulance Staff now has a dedicated `/ambulance/*` portal and exact-role transport API. Pending requests form a shared dispatch queue, while accepted requests and trips are staff-owned; guarded assignment/trip transitions persist the responsible staff, vehicle, timing, status history, and audit events without exposing clinical data.
 
 ## 2. Technology stack
 
@@ -408,6 +412,83 @@ Doctors retain only the ability to list active tests and create an order for the
 
 The allowed test states are `ordered`, `sample_collected`, `processing`, `completed`, and `cancelled`; clients cannot submit arbitrary status values. Finalized results record patient, order, test, technician, entry/finalization timestamps, and result content. No finalized-result update or delete endpoint exists. Lab Technician has only `laboratory.view`, `laboratory.sample`, and `laboratory.result` and has no generic patient, clinical mutation, payment, pharmacy, radiology, insurance, or administrative access.
 
+### Radiology (`/radiology` API)
+
+Doctors can list active modalities and create imaging orders only for their own patient/appointment. All processing endpoints require the exact `radiologist` role. Unassigned orders are visible until review starts; an assigned order and every related study/report are private to that Radiologist.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/radiology/dashboard` | Pending, scheduled, awaiting-interpretation, report, completed, and urgent metrics |
+| GET | `/radiology/orders` | Search/filter unassigned orders plus those assigned to the current Radiologist |
+| GET | `/radiology/orders/{id}` | Authorized patient, ordering Doctor, request, modality, study, and versioned reports |
+| POST | `/radiology/orders/{id}/study` | Record the single imaging study and move the order to `performed` |
+| POST | `/radiology/orders/{id}/start-review` | Atomically assign the order and begin interpretation |
+| GET/POST | `/radiology/reports` | List authorized reports or create a draft for a reviewing study |
+| PUT | `/radiology/reports/{id}` | Edit only the author's draft report |
+| POST | `/radiology/reports/{id}/finalize` | Require findings and impression, finalize the version, and complete the order |
+| POST | `/radiology/reports/{id}/amend` | Create an audited correction draft with a required reason; the finalized parent remains unchanged |
+
+The guarded order states are `ordered`, `scheduled`, `performed`, `reviewing`, `reporting`, `completed`, and `cancelled`. There is no finalized-report update/delete endpoint. Radiologist has only `radiology.view` and `radiology.report`, with no generic patient, diagnosis, prescription, lab, pharmacy, billing, accounting, insurance, ambulance, reception, or administrative permission.
+
+### Accounting (`/accountant` API)
+
+Every endpoint requires the exact `accountant` role. Invoices reuse the appointment-backed `billing` record created by the consultation workflow; the Accountant cannot create arbitrary invoices or access clinical fields.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/accountant/dashboard` | Today's revenue/payments/expenses, invoice counts, outstanding amount, and financial summary |
+| GET | `/accountant/invoices` | Search/filter invoice, patient name, appointment, amount, status, date, and receipt data |
+| POST | `/accountant/invoices/{id}/pay` | Lock a pending invoice, record one payment transaction, generate a receipt, and audit the mutation |
+| GET | `/accountant/payments` | Search/filter the immutable invoice-backed payment ledger with collector and receipt |
+| GET/POST | `/accountant/expense-categories` | List categories or create an audited category without default/demo rows |
+| GET/POST | `/accountant/expenses` | List enriched expenses or append an idempotent audited expense plus matching ledger transaction |
+| GET | `/accountant/reports` | Date-filtered revenue, payment, outstanding-invoice, expense, and daily/monthly summaries |
+
+The unique financial-transaction reference prevents duplicate invoice payments, while expense idempotency keys prevent retry duplication. There are no Accountant invoice amount/status edit, expense edit/delete, clinical, pharmacy, laboratory, radiology, insurance-claim, ambulance, employee-permission, or administrative-security endpoints.
+
+### Insurance (`/insurance` API)
+
+Every endpoint requires the exact `insurance_officer` role. Patient responses contain only patient identity and policy/provider/coverage fields. Claim invoice data is financial only; diagnosis, prescription, consultation, nursing, lab, and radiology content is never joined or returned.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/insurance/dashboard` | Pending, review, approval, rejection, document, claimed, and approved metrics |
+| GET | `/insurance/patients` | Insurance-relevant patient, provider, policy number/status, and coverage data |
+| GET/POST | `/insurance/providers` | List insurers or create an audited provider used by policy verification |
+| POST | `/insurance/policies` | Record an audited verified policy for a patient |
+| GET | `/insurance/claim-options` | Active policies and same-patient unclaimed invoices without clinical content |
+| GET/POST | `/insurance/claims` | Search claims or create one guarded draft per invoice |
+| GET | `/insurance/claims/{id}` | Policy/invoice summary, required documents, settlement entries, and immutable action history |
+| POST | `/insurance/claims/{id}/submit` | Guarded `draft -> submitted` transition |
+| POST | `/insurance/claims/{id}/start-review` | Guarded `submitted -> under_review` transition after document requirements are cleared |
+| POST | `/insurance/claims/{id}/request-documents` | Record a reason-required document request without bypassing claim state |
+| POST | `/insurance/claims/{id}/documents` | Link a unique document reference and attribute it to the Officer |
+| POST | `/insurance/claims/{id}/decision` | Approve/reject only an under-review claim, with mandatory reason and timestamp |
+| POST | `/insurance/claims/{id}/settle` | Record an insurance-only remittance; settle only when the approved amount is fully paid |
+| GET | `/insurance/approvals` | Submitted and under-review claims requiring Officer action |
+
+The final states are `draft`, `submitted`, `under_review`, `approved`, `rejected`, and `settled`. A unique claim billing reference prevents duplicate submissions, and unique settlement references prevent duplicate insurance remittances. Every claim mutation creates both claim history and an audit event.
+
+### Ambulance operations (`/ambulance` API)
+
+Every endpoint requires the exact `ambulance_staff` role. Staff can see the shared unassigned request queue, but once a request is accepted only its responsible staff member can list, open, or mutate the request/trip. Patient responses contain only transport-required identity and contact data.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/ambulance/dashboard` | Assigned available vehicles, own active/assigned/completed trips, pending requests, and critical alerts |
+| GET/POST | `/ambulance/vehicles` | List assigned vehicles or register and self-assign an operational ambulance |
+| PATCH | `/ambulance/vehicles/{id}/availability` | Change only an assigned idle vehicle between available, maintenance, and unavailable |
+| GET/POST | `/ambulance/requests` | List pending plus own requests or record a transport request with pickup and destination |
+| GET | `/ambulance/requests/{id}` | Authorized transport details, responsible staff/vehicle, timestamps, and status history |
+| POST | `/ambulance/requests/{id}/accept` | Atomically accept an unassigned request with an available assigned ambulance |
+| POST | `/ambulance/requests/{id}/start-trip` | Guarded `assigned -> en_route` transition |
+| POST | `/ambulance/requests/{id}/arrive` | Guarded `en_route -> arrived` transition |
+| POST | `/ambulance/requests/{id}/start-transport` | Guarded `arrived -> transporting` transition |
+| POST | `/ambulance/requests/{id}/complete` | Guarded `transporting -> completed` transition and release the vehicle |
+| GET | `/ambulance/trips` | List only trips owned by the current staff member |
+
+There is no generic status mutation or vehicle deletion endpoint. Every accepted assignment and trip transition records staff, ambulance, request, old/new status, timestamp, and an audit event. Ambulance Staff has no clinical, pharmacy, laboratory, radiology, accounting, insurance, employee, or administrative permission.
+
 FastAPI also exposes its normal interactive documentation at `/docs` and OpenAPI schema at `/openapi.json` unless configuration changes.
 
 ### RBAC and audit (`/rbac`)
@@ -552,14 +633,44 @@ The sidebar contains only Dashboard, Prescriptions, Dispensing, and Inventory. N
 
 The sidebar contains only Dashboard, Lab Orders, and Results. Former `/lab/samples` and `/lab/reports` pages are removed and middleware whitelisting blocks them plus every non-laboratory workflow.
 
-### Other enterprise portals
+### Radiologist portal
 
-- `/radiology`: home, orders, studies, and reports
-- `/accountant`: home, billing, transactions, expenses, refunds, daily closing, and reports
-- `/insurance`: home, providers, policies, claims, documents, and payments
-- `/ambulance`: home, requests, trips, and vehicle
+- `/radiologist/home`: pending, scheduled, awaiting-interpretation, report, completed, and urgent workload metrics
+- `/radiologist/orders`: searchable authorized imaging queue with patient, ordering Doctor, modality, priority, status, and date
+- `/radiologist/orders/[id]`: patient/request/study detail with guarded study recording, review start, interpretation draft, and finalization
+- `/radiologist/reports`: edit own drafts, review locked finalized versions, and create reason-required amendment versions
 
-These layouts validate the live role and effective permission set. Several remaining enterprise pages read live API data through the shared enterprise resource renderer; several non-Super-Admin create/update workflows still require direct API use.
+The sidebar contains only Dashboard, Imaging Orders, and Reports. Former `/radiology/*` pages are removed; exact live-role layout validation and middleware whitelisting block direct access to removed and cross-department workflows.
+
+### Accountant portal
+
+- `/accountant/home`: today's revenue/payments/expenses, invoice counts, outstanding balance, and all-time summary
+- `/accountant/invoices`: searchable invoice ledger and duplicate-safe payment collection for pending invoices
+- `/accountant/payments`: immutable payment, method, date, collector, and receipt ledger
+- `/accountant/expenses`: audited category creation and append-only expenses with optional supporting references
+- `/accountant/reports`: revenue, payments, outstanding invoices, expenses, and daily/monthly summaries
+
+The sidebar contains only Dashboard, Invoices, Payments, Expenses, and Reports. Former `/accountant/billing`, `/accountant/transactions`, `/accountant/refunds`, and `/accountant/daily-closing` pages are removed and rejected by the frontend route whitelist.
+
+### Insurance Officer portal
+
+- `/insurance/home`: pending/review/approved/rejected/document metrics plus claimed and approved totals
+- `/insurance/patients`: non-clinical patient/policy directory with provider and verified-policy setup
+- `/insurance/claims`: searchable claim queue and one-invoice/one-claim draft creation
+- `/insurance/claims/[id]`: guarded submission, document, review, decision, settlement, and full action-history workflow
+- `/insurance/approvals`: review queue with reason-required approval/rejection actions
+
+The sidebar contains only Dashboard, Patients, Claims, and Approvals. Former `/insurance/providers`, `/insurance/policies`, `/insurance/documents`, and `/insurance/payments` pages are removed and rejected by the frontend route whitelist; their required setup/actions are scoped into Patients or Claim Detail.
+
+### Ambulance Staff portal
+
+- `/ambulance/home`: assigned vehicle availability, active/assigned/completed counts, pending requests, and critical alerts
+- `/ambulance/requests`: searchable pending/owned request queue, transport request recording, and assignment acceptance
+- `/ambulance/requests/[id]`: transport-only patient/contact/route data plus guarded trip actions and audited history
+- `/ambulance/trips`: responsible-staff-only trip, ambulance, route, timing, and status ledger
+- `/ambulance/vehicles`: assigned fleet registration and idle availability/maintenance state without deletion
+
+The sidebar contains only Dashboard, Requests, Trips, and Ambulances. Former `/ambulance/vehicle` and generic dispatch/status URLs are rejected by the route whitelist and backend; exact live-role layout validation protects all direct URLs.
 
 ## 10. Data model
 
@@ -798,7 +909,7 @@ These are current implementation facts, not completed features:
 
 ### Quality and operations
 
-- Backend tests cover all role authentication, permission isolation, disabled sessions, role audit, migration preservation/refusal, Manager read-only operational scope and exact-role denial, Doctor appointment/patient assignment scope, consultation transitions and billing idempotency, slot conflicts, the exact-role/assignment-scoped Nurse workflow, and Pharmacist prescription/stock/dispensing safety. Full browser end-to-end coverage is still needed.
+- Backend tests cover all role authentication, permission isolation, disabled sessions, role audit, migration preservation/refusal, Manager read-only operational scope and exact-role denial, Doctor appointment/patient assignment scope, consultation transitions and billing idempotency, slot conflicts, exact-role/assignment-scoped Nurse and Lab workflows, Pharmacist prescription/stock/dispensing safety, Radiologist order/report assignment and finalization, Accountant financial integrity, Insurance Officer claim integrity, and Ambulance Staff vehicle/request/trip ownership, transition, and audit integrity plus cross-role isolation. Full browser end-to-end coverage is still needed.
 - No CI workflow is present.
 - Dependencies are mostly unpinned in `requirements.txt`; frontend also uses `lucide-react: latest`.
 - Explicit audit history and health/readiness endpoints are implemented. Production monitoring, backup automation, and a real outbound notification adapter remain outstanding.
@@ -829,12 +940,14 @@ At minimum, regression testing should cover:
 9. Expired, invalid, and reused verification/reset tokens are rejected.
 10. Disabled users and inactive employees cannot continue to use existing or new sessions.
 11. Super Admin creates and disables an Admin, resets the Admin password, manages an organization, setting, role grant, and feature flag, and each mutation is reflected in the UI and audit history without persisting password data in audit values.
+12. Insurance Officer creates a policy-backed invoice claim once, follows only valid submission/review/decision/settlement transitions, records required documents and decision reasons, and cannot access clinical or other departmental workflows.
+13. Ambulance Staff accepts one pending request with an assigned available vehicle, follows only assigned/en-route/arrived/transporting/completed transitions, sees no other staff member's owned trip, and releases the vehicle at completion.
 
 ## 18. Current verification status
 
 - The working tree is based on branch `main` at `a76521a`; the authorization-separation changes are not yet committed.
-- Backend: 95 tests pass. Coverage includes role login, exact cross-role denial, Manager/Nurse/Doctor/Pharmacist workflows, assignment-private Lab orders, guarded sample/processing transitions, draft result entry/update, finalized-result immutability, audit sanitization, and migration preservation/refusal.
-- Frontend: 9 role-routing authorization tests and strict TypeScript checks pass; the optimized production build succeeds and contains only the four final Lab Technician routes alongside the previously finalized role portals.
-- Alembic revision `20260831_0005` adds Lab order assignment/instructions/priority, reconciles order/item states, and introduces numeric values plus explicit draft/finalized result integrity. Fresh and legacy-data-preserving migration tests pass, and the live MySQL database is verified at `20260831_0005 (head)`.
-- Doctor and Hospital Manager cleanup require no database migration or default/demo business data. Docker Compose backend, worker, frontend, MySQL, and Redis services were rebuilt/started and verified healthy. Secret values were not printed or modified.
+- Backend: 115 tests pass. Coverage includes role login, exact cross-role denial, previous clinical/operational workflows, assignment-private Lab and Radiologist orders, immutable finalized results/reports, Accountant and Insurance integrity, plus Ambulance Staff transport-only patient responses, vehicle ownership/availability, duplicate-safe assignment, staff-private request/trip access, guarded transitions, audit history, and migration preservation.
+- Frontend: 13 role-routing authorization tests and strict TypeScript checks pass; the optimized production build succeeds and contains exactly `/ambulance/home`, `/ambulance/requests`, `/ambulance/requests/[id]`, `/ambulance/trips`, and `/ambulance/vehicles` for the Ambulance Staff portal.
+- Alembic revision `20260901_0009` adds destination data, responsible trip staff, accepted timestamps, final request/trip/vehicle states, ownership indexes, and status-history references without inserting business records. Fresh and legacy migration tests pass, and the live MySQL database is verified at `20260901_0009 (head)`.
+- No default/demo Ambulance Staff, ambulance, request, trip, or patient data is created. Docker Compose backend, worker, frontend, MySQL, and Redis services were rebuilt/started; the backend readiness endpoint returns `200` and unauthenticated `/ambulance/home` access returns `307` to `/login`.
 - `npm ci` reports 8 dependency vulnerabilities (7 high, 1 critical), including a warning that pinned Next.js `14.2.5` should be upgraded to a patched release. Dependency upgrades remain a separate compatibility/security task.

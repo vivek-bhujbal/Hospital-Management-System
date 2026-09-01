@@ -14,7 +14,7 @@ test('login homes cover every role', () => {
     nurse: '/nurse/home',
     pharmacist: '/pharmacist/home',
     lab_technician: '/lab/home',
-    radiologist: '/radiology/home',
+    radiologist: '/radiologist/home',
     accountant: '/accountant/home',
     insurance_officer: '/insurance/home',
     ambulance_staff: '/ambulance/home',
@@ -28,6 +28,7 @@ test('login homes cover every role', () => {
 test('Admin is redirected away from every Super Admin route', () => {
   const paths = [
     '/super-admin/home',
+    '/super-admin/users',
     '/super-admin/admins',
     '/super-admin/hospitals',
     '/super-admin/roles',
@@ -45,6 +46,7 @@ test('Admin is redirected away from every Super Admin route', () => {
 test('Super Admin is redirected away from hospital Admin routes', () => {
   assert.equal(protectedPortalRedirect('/admin/home', 'super_admin'), '/super-admin/home')
   assert.equal(protectedPortalRedirect('/super-admin/home', 'super_admin'), null)
+  assert.equal(protectedPortalRedirect('/super-admin/users', 'super_admin'), null)
   assert.equal(protectedPortalRedirect('/admin/home', 'admin'), null)
   assert.equal(protectedPortalRedirect('/admin/staff', 'admin'), null)
 })
@@ -207,4 +209,83 @@ test('Lab Technician routes are laboratory-only and removed pages are blocked', 
   assert.equal(protectedPortalRedirect('/admin/home', 'lab_technician'), '/lab/home')
   assert.equal(protectedPortalRedirect('/lab/home', 'doctor'), '/doctor/home')
   assert.equal(protectedPortalRedirect('/lab/home', undefined), '/login')
+})
+
+test('Radiologist routes are imaging-only, assignment-ready pages and legacy routes are closed', () => {
+  for (const path of [
+    '/radiologist/home', '/radiologist/orders',
+    '/radiologist/orders/42', '/radiologist/reports',
+  ]) assert.equal(protectedPortalRedirect(path, 'radiologist'), null)
+  for (const path of [
+    '/radiologist/orders/not-an-id', '/radiologist/studies',
+    '/radiologist/lab', '/radiologist/pharmacy', '/radiologist/billing',
+    '/radiologist/insurance', '/radiologist/admin', '/radiologist/unknown',
+  ]) assert.equal(protectedPortalRedirect(path, 'radiologist'), '/radiologist/home')
+  assert.equal(protectedPortalRedirect('/radiology/home', 'radiologist'), '/radiologist/home')
+  assert.equal(protectedPortalRedirect('/lab/home', 'radiologist'), '/radiologist/home')
+  assert.equal(protectedPortalRedirect('/pharmacist/home', 'radiologist'), '/radiologist/home')
+  assert.equal(protectedPortalRedirect('/admin/home', 'radiologist'), '/radiologist/home')
+  assert.equal(protectedPortalRedirect('/radiologist/home', 'doctor'), '/doctor/home')
+  assert.equal(protectedPortalRedirect('/radiologist/home', undefined), '/login')
+})
+
+test('Accountant routes are finance-only and legacy or cross-department pages are blocked', () => {
+  for (const path of [
+    '/accountant/home', '/accountant/invoices', '/accountant/payments',
+    '/accountant/expenses', '/accountant/reports',
+  ]) assert.equal(protectedPortalRedirect(path, 'accountant'), null)
+  for (const path of [
+    '/accountant/billing', '/accountant/transactions', '/accountant/refunds',
+    '/accountant/daily-closing', '/accountant/prescriptions', '/accountant/lab',
+    '/accountant/radiology', '/accountant/insurance', '/accountant/admin',
+    '/accountant/unknown',
+  ]) assert.equal(protectedPortalRedirect(path, 'accountant'), '/accountant/home')
+  for (const path of [
+    '/admin/home', '/doctor/home', '/receptionist/home', '/nurse/home',
+    '/pharmacist/home', '/lab/home', '/radiologist/home',
+    '/insurance/home', '/ambulance/home',
+  ]) assert.equal(protectedPortalRedirect(path, 'accountant'), '/accountant/home')
+  assert.equal(protectedPortalRedirect('/accountant/home', 'doctor'), '/doctor/home')
+  assert.equal(protectedPortalRedirect('/accountant/home', undefined), '/login')
+})
+
+test('Insurance Officer routes expose only policy and claim workflows', () => {
+  for (const path of [
+    '/insurance/home', '/insurance/patients', '/insurance/claims',
+    '/insurance/claims/42', '/insurance/approvals',
+  ]) assert.equal(protectedPortalRedirect(path, 'insurance_officer'), null)
+  for (const path of [
+    '/insurance/claims/not-an-id', '/insurance/providers', '/insurance/policies',
+    '/insurance/documents', '/insurance/payments', '/insurance/prescriptions',
+    '/insurance/lab', '/insurance/radiology', '/insurance/nursing',
+    '/insurance/ambulance', '/insurance/admin', '/insurance/unknown',
+  ]) assert.equal(protectedPortalRedirect(path, 'insurance_officer'), '/insurance/home')
+  for (const path of [
+    '/admin/home', '/doctor/home', '/receptionist/home', '/nurse/home',
+    '/pharmacist/home', '/lab/home', '/radiologist/home',
+    '/accountant/home', '/ambulance/home',
+  ]) assert.equal(protectedPortalRedirect(path, 'insurance_officer'), '/insurance/home')
+  assert.equal(protectedPortalRedirect('/insurance/home', 'doctor'), '/doctor/home')
+  assert.equal(protectedPortalRedirect('/insurance/home', undefined), '/login')
+})
+
+test('Ambulance Staff routes expose only assignment-scoped transport workflows', () => {
+  for (const path of [
+    '/ambulance/home', '/ambulance/requests', '/ambulance/requests/42',
+    '/ambulance/trips', '/ambulance/vehicles',
+  ]) assert.equal(protectedPortalRedirect(path, 'ambulance_staff'), null)
+  for (const path of [
+    '/ambulance/requests/not-an-id', '/ambulance/vehicle', '/ambulance/dispatch',
+    '/ambulance/patients', '/ambulance/prescriptions', '/ambulance/pharmacy',
+    '/ambulance/lab', '/ambulance/radiology', '/ambulance/billing',
+    '/ambulance/accounting', '/ambulance/insurance', '/ambulance/admin',
+    '/ambulance/unknown',
+  ]) assert.equal(protectedPortalRedirect(path, 'ambulance_staff'), '/ambulance/home')
+  for (const path of [
+    '/admin/home', '/doctor/home', '/receptionist/home', '/nurse/home',
+    '/pharmacist/home', '/lab/home', '/radiologist/home',
+    '/accountant/home', '/insurance/home',
+  ]) assert.equal(protectedPortalRedirect(path, 'ambulance_staff'), '/ambulance/home')
+  assert.equal(protectedPortalRedirect('/ambulance/home', 'doctor'), '/doctor/home')
+  assert.equal(protectedPortalRedirect('/ambulance/home', undefined), '/login')
 })

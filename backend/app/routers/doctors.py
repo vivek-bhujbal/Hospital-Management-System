@@ -89,7 +89,7 @@ def get_patient_radiology_reports(patient_id: int, db: Session = Depends(get_db)
         RadiologyOrder, RadiologyStudy.order_id == RadiologyOrder.id
     ).filter(
         RadiologyOrder.patient_id == patient_id,
-        RadiologyReport.status == "verified",
+        RadiologyReport.status == "finalized",
     ).order_by(RadiologyReport.created_at.desc()).all()
 
 

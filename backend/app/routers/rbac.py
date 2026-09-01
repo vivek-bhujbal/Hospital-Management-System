@@ -50,6 +50,11 @@ def update_user_role(
 
     new_role = role_update.role.value
     old_role = target.role
+    if UserRole.super_admin.value in {old_role, new_role}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The environment-owned Super Admin role cannot be assigned or removed via API",
+        )
     if old_role == new_role:
         return target
 

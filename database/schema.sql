@@ -452,15 +452,19 @@ CREATE TABLE radiology_orders (
   patient_id INT NOT NULL,
   doctor_id INT NOT NULL,
   appointment_id INT NULL,
+  assigned_radiologist_id INT NULL,
   modality_id INT NOT NULL,
   body_part VARCHAR(150),
   clinical_notes TEXT,
   priority ENUM('routine', 'urgent', 'stat') DEFAULT 'routine',
-  status ENUM('ordered', 'scheduled', 'performed', 'reporting', 'verified', 'cancelled') DEFAULT 'ordered',
+  status ENUM('ordered', 'scheduled', 'performed', 'reviewing', 'reporting', 'completed', 'cancelled') DEFAULT 'ordered',
+  review_started_at TIMESTAMP NULL,
   ordered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (patient_id) REFERENCES patients(id),
   FOREIGN KEY (doctor_id) REFERENCES users(id),
   FOREIGN KEY (appointment_id) REFERENCES appointments(id),
+  FOREIGN KEY (assigned_radiologist_id) REFERENCES users(id),
   FOREIGN KEY (modality_id) REFERENCES radiology_modalities(id)
 );
 
@@ -471,6 +475,8 @@ CREATE TABLE radiology_studies (
   storage_reference VARCHAR(255),
   performed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   technician_id INT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_radiology_study_order (order_id),
   FOREIGN KEY (order_id) REFERENCES radiology_orders(id),
   FOREIGN KEY (technician_id) REFERENCES users(id)
 );
@@ -482,12 +488,15 @@ CREATE TABLE radiology_reports (
   findings TEXT,
   impression TEXT,
   recommendations TEXT,
-  status ENUM('draft', 'verified') DEFAULT 'draft',
+  radiologist_notes TEXT,
+  amendment_reason TEXT,
+  status ENUM('draft', 'finalized') DEFAULT 'draft',
   version INT DEFAULT 1,
   parent_report_id INT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  verified_at TIMESTAMP NULL,
+  finalized_at TIMESTAMP NULL,
+  UNIQUE KEY uq_radiology_report_version (study_id, version),
   FOREIGN KEY (study_id) REFERENCES radiology_studies(id),
   FOREIGN KEY (radiologist_id) REFERENCES users(id),
   FOREIGN KEY (parent_report_id) REFERENCES radiology_reports(id)
@@ -497,7 +506,9 @@ CREATE TABLE radiology_reports (
 CREATE TABLE expense_categories (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(100) NOT NULL,
-  description TEXT
+  description TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
 CREATE TABLE expenses (
@@ -505,9 +516,13 @@ CREATE TABLE expenses (
   category_id INT NOT NULL,
   amount DECIMAL(10,2) NOT NULL,
   description TEXT,
+  supporting_reference VARCHAR(255),
   incurred_date DATE NOT NULL,
   recorded_by INT NOT NULL,
+  idempotency_key VARCHAR(191) NOT NULL UNIQUE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT ck_expenses_amount_positive CHECK (amount > 0),
   FOREIGN KEY (category_id) REFERENCES expense_categories(id),
   FOREIGN KEY (recorded_by) REFERENCES users(id)
 );
@@ -517,9 +532,12 @@ CREATE TABLE financial_transactions (
   transaction_type ENUM('payment', 'refund', 'expense') NOT NULL,
   amount DECIMAL(10,2) NOT NULL,
   reference_id INT, -- Can link to billing.id or expenses.id
+  reference_type VARCHAR(50),
   payment_method VARCHAR(50),
   transaction_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   recorded_by INT NOT NULL,
+  CONSTRAINT ck_financial_transactions_amount_positive CHECK (amount > 0),
+  UNIQUE KEY uq_financial_transaction_reference (transaction_type, reference_type, reference_id),
   FOREIGN KEY (recorded_by) REFERENCES users(id)
 );
 
@@ -529,7 +547,9 @@ CREATE TABLE refunds (
   amount DECIMAL(10,2) NOT NULL,
   reason TEXT,
   processed_by INT NOT NULL,
+  idempotency_key VARCHAR(191) NOT NULL UNIQUE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT ck_refunds_amount_positive CHECK (amount > 0),
   FOREIGN KEY (transaction_id) REFERENCES financial_transactions(id),
   FOREIGN KEY (processed_by) REFERENCES users(id)
 );
@@ -551,7 +571,9 @@ CREATE TABLE insurance_providers (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(150) NOT NULL,
   contact_info TEXT,
-  status ENUM('active', 'inactive') DEFAULT 'active'
+  status ENUM('active', 'inactive') DEFAULT 'active',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
 CREATE TABLE insurance_policies (
@@ -563,6 +585,11 @@ CREATE TABLE insurance_policies (
   coverage_end DATE NOT NULL,
   coverage_limit DECIMAL(10,2),
   status ENUM('active', 'expired', 'suspended') DEFAULT 'active',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT ck_insurance_coverage_nonnegative CHECK (coverage_limit IS NULL OR coverage_limit >= 0),
+  CONSTRAINT ck_insurance_policy_dates CHECK (coverage_end >= coverage_start),
+  UNIQUE KEY uq_insurance_provider_policy (provider_id, policy_number),
   FOREIGN KEY (patient_id) REFERENCES patients(id),
   FOREIGN KEY (provider_id) REFERENCES insurance_providers(id)
 );
@@ -572,10 +599,18 @@ CREATE TABLE insurance_claims (
   policy_id INT NOT NULL,
   billing_id INT NULL,
   amount_claimed DECIMAL(10,2) NOT NULL,
-  status ENUM('draft', 'submitted', 'under_review', 'approved', 'partially_approved', 'rejected', 'settled', 'cancelled') DEFAULT 'draft',
+  approved_amount DECIMAL(10,2) NULL,
+  status ENUM('draft', 'submitted', 'under_review', 'approved', 'rejected', 'settled') DEFAULT 'draft',
+  documents_required BOOLEAN NOT NULL DEFAULT FALSE,
   officer_id INT NOT NULL,
+  submitted_at TIMESTAMP NULL,
+  decided_at TIMESTAMP NULL,
+  settled_at TIMESTAMP NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT ck_insurance_claim_amount_positive CHECK (amount_claimed > 0),
+  CONSTRAINT ck_insurance_approved_nonnegative CHECK (approved_amount IS NULL OR approved_amount >= 0),
+  UNIQUE KEY uq_insurance_claim_billing (billing_id),
   FOREIGN KEY (policy_id) REFERENCES insurance_policies(id),
   FOREIGN KEY (billing_id) REFERENCES billing(id),
   FOREIGN KEY (officer_id) REFERENCES users(id)
@@ -586,6 +621,7 @@ CREATE TABLE insurance_claim_items (
   claim_id INT NOT NULL,
   description TEXT,
   amount DECIMAL(10,2) NOT NULL,
+  CONSTRAINT ck_insurance_claim_item_amount_positive CHECK (amount > 0),
   FOREIGN KEY (claim_id) REFERENCES insurance_claims(id) ON DELETE CASCADE
 );
 
@@ -593,8 +629,23 @@ CREATE TABLE insurance_documents (
   id INT AUTO_INCREMENT PRIMARY KEY,
   claim_id INT NOT NULL,
   document_reference VARCHAR(255) NOT NULL,
+  linked_by INT NULL,
   uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (claim_id) REFERENCES insurance_claims(id) ON DELETE CASCADE
+  FOREIGN KEY (claim_id) REFERENCES insurance_claims(id) ON DELETE CASCADE,
+  FOREIGN KEY (linked_by) REFERENCES users(id)
+);
+
+CREATE TABLE insurance_claim_actions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  claim_id INT NOT NULL,
+  officer_id INT NOT NULL,
+  action VARCHAR(50) NOT NULL,
+  from_status VARCHAR(30),
+  to_status VARCHAR(30),
+  reason TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (claim_id) REFERENCES insurance_claims(id) ON DELETE CASCADE,
+  FOREIGN KEY (officer_id) REFERENCES users(id)
 );
 
 CREATE TABLE insurance_payments (
@@ -605,6 +656,8 @@ CREATE TABLE insurance_payments (
   transaction_reference VARCHAR(150),
   recorded_by INT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT ck_insurance_payment_amount_positive CHECK (amount_paid > 0),
+  UNIQUE KEY uq_insurance_payment_reference (transaction_reference),
   FOREIGN KEY (claim_id) REFERENCES insurance_claims(id),
   FOREIGN KEY (recorded_by) REFERENCES users(id)
 );
@@ -614,9 +667,11 @@ CREATE TABLE ambulances (
   id INT AUTO_INCREMENT PRIMARY KEY,
   vehicle_number VARCHAR(50) NOT NULL UNIQUE,
   vehicle_type VARCHAR(100),
-  status ENUM('available', 'dispatched', 'on_route', 'arrived', 'transporting', 'completed', 'maintenance', 'unavailable') DEFAULT 'available',
+  status ENUM('available', 'assigned', 'en_route', 'arrived', 'transporting', 'maintenance', 'unavailable') NOT NULL DEFAULT 'available',
   capacity INT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT ck_ambulance_capacity_positive CHECK (capacity IS NULL OR capacity > 0)
 );
 
 CREATE TABLE ambulance_staff_assignments (
@@ -625,6 +680,7 @@ CREATE TABLE ambulance_staff_assignments (
   staff_id INT NOT NULL,
   status ENUM('active', 'inactive') DEFAULT 'active',
   assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_ambulance_staff_assignment (ambulance_id, staff_id),
   FOREIGN KEY (ambulance_id) REFERENCES ambulances(id),
   FOREIGN KEY (staff_id) REFERENCES users(id)
 );
@@ -635,9 +691,11 @@ CREATE TABLE ambulance_requests (
   requester_name VARCHAR(150),
   requester_contact VARCHAR(50),
   pickup_location TEXT NOT NULL,
+  destination TEXT NULL,
   priority ENUM('low', 'medium', 'high', 'critical') DEFAULT 'high',
-  status ENUM('requested', 'approved', 'dispatched', 'accepted', 'pickup', 'transporting', 'arrived', 'completed', 'cancelled') DEFAULT 'requested',
+  status ENUM('requested', 'assigned', 'en_route', 'arrived', 'transporting', 'completed', 'cancelled') NOT NULL DEFAULT 'requested',
   requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (patient_id) REFERENCES patients(id)
 );
 
@@ -645,22 +703,32 @@ CREATE TABLE ambulance_trips (
   id INT AUTO_INCREMENT PRIMARY KEY,
   request_id INT NOT NULL,
   ambulance_id INT NOT NULL,
-  status ENUM('dispatched', 'accepted', 'on_route', 'pickup', 'transporting', 'arrived', 'completed', 'cancelled') DEFAULT 'dispatched',
+  staff_id INT NOT NULL,
+  status ENUM('assigned', 'en_route', 'arrived', 'transporting', 'completed', 'cancelled') NOT NULL DEFAULT 'assigned',
+  accepted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   start_time TIMESTAMP NULL,
   pickup_time TIMESTAMP NULL,
   arrival_time TIMESTAMP NULL,
   end_time TIMESTAMP NULL,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_ambulance_trip_request (request_id),
   FOREIGN KEY (request_id) REFERENCES ambulance_requests(id),
-  FOREIGN KEY (ambulance_id) REFERENCES ambulances(id)
+  FOREIGN KEY (ambulance_id) REFERENCES ambulances(id),
+  FOREIGN KEY (staff_id) REFERENCES users(id)
 );
 
 CREATE TABLE ambulance_status_history (
   id INT AUTO_INCREMENT PRIMARY KEY,
   ambulance_id INT NOT NULL,
+  request_id INT NULL,
+  trip_id INT NULL,
+  old_status VARCHAR(50),
   status VARCHAR(50) NOT NULL,
   recorded_by INT NOT NULL,
   recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (ambulance_id) REFERENCES ambulances(id),
+  FOREIGN KEY (request_id) REFERENCES ambulance_requests(id),
+  FOREIGN KEY (trip_id) REFERENCES ambulance_trips(id),
   FOREIGN KEY (recorded_by) REFERENCES users(id)
 );
 
@@ -686,11 +754,18 @@ CREATE INDEX idx_lab_orders_appointment_id ON lab_orders(appointment_id);
 CREATE INDEX idx_radiology_orders_patient_id ON radiology_orders(patient_id);
 CREATE INDEX idx_radiology_orders_doctor_id ON radiology_orders(doctor_id);
 CREATE INDEX idx_radiology_orders_appointment_id ON radiology_orders(appointment_id);
+CREATE INDEX idx_radiology_orders_assigned_radiologist_id ON radiology_orders(assigned_radiologist_id);
 
 CREATE INDEX idx_insurance_policies_patient_id ON insurance_policies(patient_id);
 CREATE INDEX idx_insurance_claims_policy_id ON insurance_claims(policy_id);
+CREATE INDEX idx_insurance_claim_status_updated ON insurance_claims(status, updated_at);
+CREATE INDEX idx_insurance_claim_actions_claim_created ON insurance_claim_actions(claim_id, created_at);
 
 CREATE INDEX idx_ambulance_requests_patient_id ON ambulance_requests(patient_id);
+CREATE INDEX ix_ambulance_assignment_staff_status ON ambulance_staff_assignments(staff_id, status);
+CREATE INDEX ix_ambulance_request_status_priority ON ambulance_requests(status, priority, requested_at);
+CREATE INDEX ix_ambulance_trip_staff_status ON ambulance_trips(staff_id, status);
+CREATE INDEX ix_ambulance_history_request_recorded ON ambulance_status_history(request_id, recorded_at);
 
 -- Notification Infrastructure Tables
 CREATE TABLE notification_providers (

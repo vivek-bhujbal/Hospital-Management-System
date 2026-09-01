@@ -1,5 +1,9 @@
-import EnterpriseResourcePage from '@/components/EnterpriseResourcePage'
+import Link from 'next/link'
+import { fetchAPI } from '@/lib/api'
+import type { AmbulanceTripRecord } from '@/lib/ambulanceTypes'
+import { ambulanceStatusClass } from '@/lib/ambulanceTypes'
 
-export default function AmbulanceTrips() {
-  return <EnterpriseResourcePage title="Ambulance trips" endpoint="/ambulance/trips" />
+export default async function AmbulanceTripsPage() {
+  const trips = await fetchAPI('/ambulance/trips') as AmbulanceTripRecord[]
+  return <div className="space-y-6"><div><p className="text-sm font-semibold uppercase tracking-wider text-blue-600">Transport history</p><h1 className="mt-1 text-3xl font-bold">Ambulance Trips</h1><p className="mt-1 text-slate-600">Only trips for which you are the responsible staff member are displayed.</p></div><section className="overflow-hidden rounded-2xl border bg-white shadow-sm">{trips.length === 0 ? <p className="p-10 text-center text-slate-500">No assigned ambulance trips.</p> : <div className="overflow-x-auto"><table className="min-w-full divide-y text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-4 py-4">Trip / patient</th><th className="px-4 py-4">Ambulance</th><th className="px-4 py-4">Route</th><th className="px-4 py-4">Start</th><th className="px-4 py-4">End</th><th className="px-4 py-4">Status</th></tr></thead><tbody className="divide-y">{trips.map(trip => <tr key={trip.id}><td className="px-4 py-4"><Link href={`/ambulance/requests/${trip.request_id}`} className="font-semibold text-blue-600">Trip #{trip.id}</Link><p className="text-slate-600">{trip.patient_name || 'Unknown patient'}</p></td><td className="px-4 py-4"><p className="font-semibold">{trip.vehicle_number}</p><p className="text-xs text-slate-500">{trip.staff_name}</p></td><td className="max-w-xs px-4 py-4"><p>{trip.pickup_location}</p><p className="text-xs text-slate-500">to {trip.destination || 'Not recorded'}</p></td><td className="px-4 py-4">{trip.start_time ? new Date(trip.start_time).toLocaleString() : 'Not started'}</td><td className="px-4 py-4">{trip.end_time ? new Date(trip.end_time).toLocaleString() : 'Active'}</td><td className="px-4 py-4"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${ambulanceStatusClass(trip.status)}`}>{trip.status.replace('_', ' ')}</span></td></tr>)}</tbody></table></div>}</section></div>
 }

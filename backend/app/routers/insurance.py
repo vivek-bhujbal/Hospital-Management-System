@@ -276,3 +276,7 @@ def record_insurance_payment(
     db.commit()
     db.refresh(new_payment)
     return new_payment
+
+
+# Export the finalized exact-role Insurance Officer workflow.
+from app.routers.insurance_workflow import router as router

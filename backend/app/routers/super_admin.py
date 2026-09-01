@@ -346,6 +346,24 @@ def get_admins(db: Session = Depends(get_db)):
     ]
 
 
+@router.get("/users", response_model=List[StaffAccountResponse])
+def get_system_users(db: Session = Depends(get_db)):
+    """List safe account metadata for every system user."""
+    items = db.query(User).order_by(User.created_at.desc(), User.id.desc()).all()
+    return [
+        {
+            "id": item.id,
+            "name": item.name,
+            "email": item.email,
+            "role": item.role,
+            "is_active": item.is_active,
+            "profile_id": None,
+            "created_at": item.created_at,
+        }
+        for item in items
+    ]
+
+
 @router.get("/admins/{admin_id}", response_model=StaffAccountResponse)
 def get_admin(admin_id: int, db: Session = Depends(get_db)):
     item = db.query(User).filter(

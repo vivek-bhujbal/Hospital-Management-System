@@ -210,3 +210,8 @@ def perform_daily_closing(
     db.commit()
     db.refresh(closing)
     return closing
+
+
+# Export only the finalized exact-role Accountant API. The legacy implementation
+# above remains import-compatible for older references but is not mounted.
+from app.routers.accountant_finance import router as router

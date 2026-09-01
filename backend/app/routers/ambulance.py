@@ -263,3 +263,7 @@ def update_trip_status(
     db.refresh(trip)
     
     return trip
+
+
+# Export the finalized exact-role Ambulance Staff workflow.
+from app.routers.ambulance_workflow import router as router
