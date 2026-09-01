@@ -5,7 +5,7 @@ import { checkinAction, confirmAppointmentAction } from '@/app/actions/reception
 import { fetchAPI } from '@/lib/api'
 import { hasPermission, PERMISSIONS } from '@/lib/permissions'
 import { dateValue, ReceptionAppointment, ReceptionDoctor, ReceptionPatient, shortTime } from '@/lib/receptionistTypes'
-import { getCurrentPermissions } from '@/lib/serverPermissions'
+import { getCurrentPermissions, requireAnyPermission } from '@/lib/serverPermissions'
 
 const STATUS_STYLES: Record<ReceptionAppointment['status'], string> = {
   requested: 'border-amber-200 bg-amber-50 text-amber-700',
@@ -26,6 +26,10 @@ function waitingLabel(status: ReceptionAppointment['status']): string {
 }
 
 export default async function ReceptionistQueuePage() {
+  await requireAnyPermission(
+    [PERMISSIONS.APPOINTMENTS_UPDATE, PERMISSIONS.APPOINTMENTS_CHECKIN],
+    '/receptionist/home',
+  )
   const today = dateValue()
   const [appointments, patients, doctors, permissions] = await Promise.all([
     fetchAPI(`/appointments/?date=${today}`) as Promise<ReceptionAppointment[]>,

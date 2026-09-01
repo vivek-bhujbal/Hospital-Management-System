@@ -11,6 +11,7 @@ const API_URL = process.env.API_INTERNAL_URL
 export interface StaffActionResult {
   error?: string
   success?: boolean
+  warning?: string
 }
 
 function headers(): Record<string, string> {
@@ -63,6 +64,7 @@ export async function createAdminAccountAction(
 export async function createStaffAccountAction(
   formData: FormData,
 ): Promise<StaffActionResult> {
+  const role = formData.get('role')
   const response = await fetch(`${API_URL}/admin/staff`, {
     method: 'POST',
     headers: headers(),
@@ -70,13 +72,13 @@ export async function createStaffAccountAction(
       name: optionalString(formData, 'name'),
       email: optionalString(formData, 'email'),
       password: formData.get('password'),
-      role: formData.get('role'),
+      role,
       specialization: optionalString(formData, 'specialization'),
       consultation_fee: optionalString(formData, 'consultation_fee'),
       contact: optionalString(formData, 'contact'),
       timing_start: optionalString(formData, 'timing_start'),
       timing_end: optionalString(formData, 'timing_end'),
-      designation: optionalString(formData, 'designation'),
+      designation: role === 'receptionist' ? 'Receptionist' : null,
       joining_date: optionalString(formData, 'joining_date'),
       shift_start: optionalString(formData, 'shift_start'),
       shift_end: optionalString(formData, 'shift_end'),
@@ -85,6 +87,30 @@ export async function createStaffAccountAction(
   if (response.status === 401) redirect('/login')
   if (!response.ok) {
     return { error: await errorDetail(response, 'Failed to create staff account') }
+  }
+
+  const account = await response.json() as { profile_id?: number | null }
+  if (role === 'receptionist' && account.profile_id) {
+    const permissionsResponse = await fetch(
+      `${API_URL}/admin/employees/${account.profile_id}/permissions`,
+      {
+        method: 'PATCH',
+        headers: headers(),
+        body: JSON.stringify({
+          can_register_patient: formData.get('can_register_patient') === 'on',
+          can_schedule_appointment: formData.get('can_schedule_appointment') === 'on',
+          can_checkin_patient: formData.get('can_checkin_patient') === 'on',
+          can_collect_billing: formData.get('can_collect_billing') === 'on',
+        }),
+      },
+    )
+    if (!permissionsResponse.ok) {
+      revalidatePath('/admin/staff')
+      return {
+        success: true,
+        warning: 'Receptionist account was created, but its selected page access could not be applied.',
+      }
+    }
   }
   revalidatePath('/admin/staff')
   return { success: true }

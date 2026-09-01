@@ -6,6 +6,13 @@ import { createStaffAccountAction, setHospitalManagerActiveAction } from '@/app/
 import type { AccountSummary } from '@/components/AdminAccountsPanel'
 import SubmitButton from '@/components/SubmitButton'
 
+const RECEPTIONIST_PAGE_ACCESS = [
+  ['can_register_patient', 'Patient registration', 'Create new patient records'],
+  ['can_schedule_appointment', 'Appointment scheduling', 'Book and confirm appointments'],
+  ['can_checkin_patient', 'Patient queue', 'Check in arriving patients'],
+  ['can_collect_billing', 'Billing collection', 'Collect payments and issue receipts'],
+] as const
+
 const STAFF_ROLES = [
   ['hospital_manager', 'Hospital Manager'],
   ['doctor', 'Doctor'],
@@ -35,7 +42,7 @@ export default function StaffAccountsPanel({ accounts }: { accounts: AccountSumm
     }
     formRef.current?.reset()
     setRole('hospital_manager')
-    setSuccess('Staff account created successfully.')
+    setSuccess(result.warning || 'Staff account created successfully.')
   }
 
   async function toggleManagerStatus(formData: FormData) {
@@ -80,15 +87,29 @@ export default function StaffAccountsPanel({ accounts }: { accounts: AccountSumm
 
           {role === 'receptionist' && (
             <>
-              <input name="designation" aria-label="Receptionist designation" required placeholder="Designation" className="rounded-lg border p-3" />
               <input name="joining_date" type="date" aria-label="Joining date" className="rounded-lg border p-3" />
               <input name="shift_start" type="time" aria-label="Shift start" className="rounded-lg border p-3" />
               <input name="shift_end" type="time" aria-label="Shift end" className="rounded-lg border p-3" />
+              <fieldset className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 md:col-span-2 xl:col-span-4">
+                <legend className="px-1 text-sm font-semibold text-slate-900">Assign receptionist pages</legend>
+                <p className="mt-1 text-xs text-slate-500">Front desk overview and patient directory remain available. Select the additional pages this account should access.</p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  {RECEPTIONIST_PAGE_ACCESS.map(([name, label, description]) => (
+                    <label key={name} className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 transition hover:border-brand-300 hover:bg-brand-50/40">
+                      <input type="checkbox" name={name} className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-700 focus:ring-brand-600" />
+                      <span>
+                        <span className="block text-sm font-semibold text-slate-900">{label}</span>
+                        <span className="mt-1 block text-xs leading-5 text-slate-500">{description}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
             </>
           )}
 
           <p className="md:col-span-2 xl:col-span-3 text-xs text-gray-500">
-            Passwords require uppercase, lowercase, a number, and a special character. New receptionist permissions start disabled.
+            Passwords require uppercase, lowercase, a number, and a special character.
           </p>
           <SubmitButton className="rounded-lg bg-blue-600 px-5 py-3 text-white hover:bg-blue-700">
             Create Staff Account

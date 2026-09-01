@@ -49,6 +49,8 @@ test('Super Admin is redirected away from hospital Admin routes', () => {
   assert.equal(protectedPortalRedirect('/super-admin/users', 'super_admin'), null)
   assert.equal(protectedPortalRedirect('/admin/home', 'admin'), null)
   assert.equal(protectedPortalRedirect('/admin/staff', 'admin'), null)
+  assert.equal(protectedPortalRedirect('/admin/employees', 'admin'), '/admin/home')
+  assert.equal(protectedPortalRedirect('/admin/employees/12/permissions', 'admin'), '/admin/home')
 })
 
 test('Receptionist routes are role-protected and limited to the final module', () => {

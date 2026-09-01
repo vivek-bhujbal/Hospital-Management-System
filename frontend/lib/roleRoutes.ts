@@ -32,6 +32,14 @@ const DOCTOR_ROUTES: ReadonlySet<string> = new Set([
   '/doctor/consultation',
   '/doctor/profile',
 ])
+const ADMIN_ROUTES: ReadonlySet<string> = new Set([
+  '/admin/home',
+  '/admin/doctors',
+  '/admin/patients',
+  '/admin/appointments',
+  '/admin/billing',
+  '/admin/staff',
+])
 const MANAGER_ROUTES: ReadonlySet<string> = new Set([
   '/manager/home',
   '/manager/appointments',
@@ -103,6 +111,12 @@ function isDoctorRoute(pathname: string): boolean {
   return DOCTOR_ROUTES.has(pathname) || /^\/doctor\/patients\/\d+$/.test(pathname)
 }
 
+function isAdminRoute(pathname: string): boolean {
+  return ADMIN_ROUTES.has(pathname)
+    || /^\/admin\/doctors\/\d+$/.test(pathname)
+    || /^\/admin\/doctors\/\d+\/edit$/.test(pathname)
+}
+
 function isNurseRoute(pathname: string): boolean {
   return NURSE_ROUTES.has(pathname) || /^\/nurse\/patient\/\d+$/.test(pathname)
 }
@@ -162,6 +176,9 @@ export function protectedPortalRedirect(
     return isUserRole(role) ? ROLE_HOME[role] : '/login'
   }
   if (isDoctorPath && !isDoctorRoute(pathname)) {
+    return isUserRole(role) ? ROLE_HOME[role] : '/login'
+  }
+  if (isAdminPath && !isAdminRoute(pathname)) {
     return isUserRole(role) ? ROLE_HOME[role] : '/login'
   }
   if ((pathname === '/manager' || pathname.startsWith('/manager/')) && !MANAGER_ROUTES.has(pathname)) {

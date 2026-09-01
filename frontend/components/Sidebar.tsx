@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 
 import { logoutAction } from '@/app/actions/auth'
-import { hasPermission, Permission, PERMISSIONS, UserRole } from '@/lib/permissions'
+import { hasAnyPermission, hasPermission, Permission, PERMISSIONS, UserRole } from '@/lib/permissions'
 import { ROLE_HOME } from '@/lib/roleRoutes'
 import { cn } from '@/components/ui/HmsUI'
 
@@ -21,6 +21,7 @@ export interface MenuItem {
   path: string
   icon: LucideIcon
   permission?: Permission
+  permissions?: readonly Permission[]
   group?: 'Overview' | 'Care workspace' | 'Operations' | 'Administration' | 'Governance'
 }
 
@@ -37,7 +38,7 @@ const MENU_ITEMS: Record<UserRole, readonly MenuItem[]> = {
     { name: 'Patients', path: '/receptionist/patients', icon: Users, permission: PERMISSIONS.PATIENTS_VIEW, group: 'Care workspace' },
     { name: 'Register patient', path: '/receptionist/register-patient', icon: UserPlus, permission: PERMISSIONS.PATIENTS_CREATE, group: 'Care workspace' },
     { name: 'Schedule', path: '/receptionist/schedule', icon: CalendarDays, permission: PERMISSIONS.APPOINTMENTS_CREATE, group: 'Operations' },
-    { name: "Today's queue", path: '/receptionist/queue', icon: ClipboardList, permission: PERMISSIONS.APPOINTMENTS_VIEW, group: 'Operations' },
+    { name: "Today's queue", path: '/receptionist/queue', icon: ClipboardList, permissions: [PERMISSIONS.APPOINTMENTS_UPDATE, PERMISSIONS.APPOINTMENTS_CHECKIN], group: 'Operations' },
     { name: 'Billing desk', path: '/receptionist/billing', icon: CreditCard, permission: PERMISSIONS.BILLING_COLLECT, group: 'Operations' },
   ],
   doctor: [
@@ -50,7 +51,6 @@ const MENU_ITEMS: Record<UserRole, readonly MenuItem[]> = {
   admin: [
     { name: 'Hospital overview', path: '/admin/home', icon: LayoutDashboard, permission: PERMISSIONS.REPORTS_VIEW, group: 'Overview' },
     { name: 'Doctors', path: '/admin/doctors', icon: Stethoscope, permission: PERMISSIONS.DOCTORS_VIEW, group: 'Care workspace' },
-    { name: 'Employees', path: '/admin/employees', icon: Users, permission: PERMISSIONS.STAFF_VIEW, group: 'Administration' },
     { name: 'Staff accounts', path: '/admin/staff', icon: UserPlus, permission: PERMISSIONS.STAFF_CREATE, group: 'Administration' },
     { name: 'Patients', path: '/admin/patients', icon: FileHeart, permission: PERMISSIONS.PATIENTS_VIEW, group: 'Care workspace' },
     { name: 'Appointments', path: '/admin/appointments', icon: CalendarDays, permission: PERMISSIONS.APPOINTMENTS_VIEW, group: 'Operations' },
@@ -129,7 +129,11 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 }
 
 export function visibleMenuItems(portalRole: UserRole, permissions: readonly Permission[]) {
-  return MENU_ITEMS[portalRole].filter((item) => !item.permission || hasPermission(permissions, item.permission))
+  return MENU_ITEMS[portalRole].filter((item) => {
+    if (item.permission && !hasPermission(permissions, item.permission)) return false
+    if (item.permissions && !hasAnyPermission(permissions, item.permissions)) return false
+    return true
+  })
 }
 
 interface SidebarProps {
