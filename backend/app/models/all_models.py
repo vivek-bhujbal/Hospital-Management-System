@@ -114,7 +114,7 @@ class Prescription(Base):
     appointment_id = Column(Integer, ForeignKey('appointments.id'), nullable=False, unique=True)
     diagnosis = Column(Text)
     medicine = Column(String(150))
-    dosage = Column(String(100))
+    dosage = Column(Text)
     notes = Column(Text)
     created_at = Column(TIMESTAMP, server_default=func.now())
 

@@ -2,11 +2,7 @@ services:
   db:
     image: mysql:8.0
     restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-hospital_management}
-      MYSQL_USER: ${MYSQL_USER:-hospital_app}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
+    env_file: ./backend/.env
     volumes:
       - db_data:/var/lib/mysql
     healthcheck:
@@ -29,9 +25,7 @@ services:
     build:
       context: ./backend
     restart: "no"
-    env_file: .env
-    environment:
-      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-hospital_app}:${MYSQL_PASSWORD}@db/${MYSQL_DATABASE:-hospital_management}
+    env_file: ./backend/.env
     command: ["alembic", "upgrade", "head"]
     depends_on:
       db:
@@ -43,8 +37,6 @@ services:
     restart: "no"
     # Super Admin credentials are owned by the backend environment file.
     env_file: ./backend/.env
-    environment:
-      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-hospital_app}:${MYSQL_PASSWORD}@db/${MYSQL_DATABASE:-hospital_management}
     command: ["python", "-m", "app.services.super_admin_bootstrap"]
     depends_on:
       migrate:
@@ -56,9 +48,7 @@ services:
     profiles: ["tools"]
     restart: "no"
     env_file: ./backend/.env
-    environment:
-      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-hospital_app}:${MYSQL_PASSWORD}@db/${MYSQL_DATABASE:-hospital_management}
-    command: ["python", "reset_db.py", "--confirm-database", "${MYSQL_DATABASE:-hospital_management}"]
+    command: ["python", "reset_db.py", "--confirm-database", "hospital_management"]
     depends_on:
       db:
         condition: service_healthy
@@ -69,8 +59,6 @@ services:
     profiles: ["tools"]
     restart: "no"
     env_file: ./backend/.env
-    environment:
-      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-hospital_app}:${MYSQL_PASSWORD}@db/${MYSQL_DATABASE:-hospital_management}
     command: ["python", "verify_clean_database.py"]
     depends_on:
       bootstrap:
@@ -83,11 +71,10 @@ services:
     # Runtime mail/auth configuration is maintained with the backend service.
     env_file: ./backend/.env
     environment:
-      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-hospital_app}:${MYSQL_PASSWORD}@db/${MYSQL_DATABASE:-hospital_management}
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      - "8000:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready')"]
       interval: 15s
@@ -106,7 +93,6 @@ services:
     command: ["celery", "-A", "app.celery_app.celery_app", "worker", "--loglevel=info", "--concurrency=4"]
     env_file: ./backend/.env
     environment:
-      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-hospital_app}:${MYSQL_PASSWORD}@db/${MYSQL_DATABASE:-hospital_management}
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
     depends_on:
@@ -119,13 +105,13 @@ services:
     build:
       context: ./frontend
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        NEXT_PUBLIC_API_URL: http://localhost:8000
     restart: unless-stopped
     environment:
       API_INTERNAL_URL: http://backend:8000
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      NEXT_PUBLIC_API_URL: http://localhost:8000
     ports:
-      - "${FRONTEND_PORT:-3000}:3000"
+      - "3000:3000"
     depends_on:
       backend:
         condition: service_healthy

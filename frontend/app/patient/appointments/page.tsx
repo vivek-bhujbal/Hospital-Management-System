@@ -1,10 +1,7 @@
-import ClientForm from '@/components/ClientForm'
-import SubmitButton from '@/components/SubmitButton'
 import AutoRefresh from '@/components/AutoRefresh'
 import { fetchAPI } from '@/lib/api'
-import Link from 'next/link'
-import { bookAppointmentAction } from '@/app/actions/patient'
 import { EmptyState, PageHeader, StatusBadge } from '@/components/ui/HmsUI'
+import PatientAppointmentForm from './PatientAppointmentForm'
 
 export default async function PatientAppointments() {
   const appts = await fetchAPI('/appointments/me')
@@ -19,37 +16,9 @@ export default async function PatientAppointments() {
       <section className="hms-card p-5 sm:p-6">
         <h2 className="text-xl font-semibold mb-1">Book a new appointment</h2>
         <p className="mb-5 text-sm text-slate-500">Choose your doctor, preferred date and time, and briefly tell us the reason for your visit.</p>
-        <ClientForm action={bookAppointmentAction} className="space-y-4 max-w-md">
-          <input type="hidden" name="patient_id" value={profile.id} />
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Doctor</label>
-            <select name="doctor_id" required className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
-              {doctors.map((d: any) => (
-                <option key={d.id} value={d.id}>{d.name} ({d.specialization})</option>
-              ))}
-            </select>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Date</label>
-            <input type="date" name="appt_date" required min={new Date().toISOString().split("T")[0]} className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Time</label>
-            <input type="time" name="appt_time" required className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Reason</label>
-            <input type="text" name="reason" className="mt-1 block w-full p-2 border border-gray-300 rounded-md" />
-          </div>
-          
-          <SubmitButton>
-            Book Appointment
-          </SubmitButton>
-        </ClientForm>
+        <div className="max-w-3xl">
+          <PatientAppointmentForm patientId={profile.id} doctors={doctors} appointments={appts} />
+        </div>
       </section>
 
       <section className="hms-card overflow-hidden">

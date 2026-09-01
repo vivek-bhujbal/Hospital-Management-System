@@ -197,23 +197,24 @@ export default async function DoctorConsultation({ searchParams }: { searchParam
             <input type="hidden" name="appointment_id" value={appointment.id} />
             <div>
               <label className="block text-sm font-semibold text-slate-700" htmlFor="diagnosis">Diagnosis</label>
-              <textarea id="diagnosis" name="diagnosis" required rows={3} className="mt-2 block w-full rounded-xl border border-slate-300 p-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              <textarea id="diagnosis" name="diagnosis" required maxLength={4000} rows={3} className="mt-2 block w-full rounded-xl border border-slate-300 p-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700" htmlFor="medicine">Medicines</label>
-              <input id="medicine" name="medicine" required placeholder="Enter one or more medicines" className="mt-2 block w-full rounded-xl border border-slate-300 p-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              <input id="medicine" name="medicine" required maxLength={150} placeholder="Enter one or more medicines" className="mt-2 block w-full rounded-xl border border-slate-300 p-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700" htmlFor="dosage">Dosage</label>
-              <input id="dosage" name="dosage" required placeholder="Example: one tablet twice daily" className="mt-2 block w-full rounded-xl border border-slate-300 p-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              <textarea id="dosage" name="dosage" required maxLength={2000} rows={2} placeholder="Example: one tablet twice daily after food" className="mt-2 block w-full rounded-xl border border-slate-300 p-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              <p className="mt-1.5 text-xs text-slate-500">Detailed dosage directions are supported up to 2,000 characters.</p>
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700" htmlFor="instructions">Instructions</label>
-              <textarea id="instructions" name="instructions" rows={2} placeholder="Medication and follow-up instructions" className="mt-2 block w-full rounded-xl border border-slate-300 p-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              <textarea id="instructions" name="instructions" maxLength={3500} rows={2} placeholder="Medication and follow-up instructions" className="mt-2 block w-full rounded-xl border border-slate-300 p-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700" htmlFor="clinical_notes">Clinical notes</label>
-              <textarea id="clinical_notes" name="clinical_notes" rows={3} placeholder="Relevant examination findings and notes" className="mt-2 block w-full rounded-xl border border-slate-300 p-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              <textarea id="clinical_notes" name="clinical_notes" maxLength={4000} rows={3} placeholder="Relevant examination findings and notes" className="mt-2 block w-full rounded-xl border border-slate-300 p-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
             </div>
             <SubmitButton className="rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white hover:bg-blue-700">
               Create prescription and complete

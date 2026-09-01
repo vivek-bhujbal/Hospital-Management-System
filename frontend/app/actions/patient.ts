@@ -13,13 +13,26 @@ function getAuthHeaders() {
   }
 }
 
+async function getActionError(response: Response, fallback: string): Promise<string> {
+  const body = await response.json().catch(() => ({})) as {
+    detail?: string | Array<{ msg?: string }>
+  }
+
+  if (typeof body.detail === 'string') return body.detail
+  if (Array.isArray(body.detail)) {
+    const messages = body.detail.map((item) => item.msg).filter(Boolean)
+    if (messages.length) return messages.join(', ')
+  }
+  return fallback
+}
+
 export async function bookAppointmentAction(formData: FormData) {
   const payload = {
     patient_id: parseInt(formData.get('patient_id') as string),
     doctor_id: parseInt(formData.get('doctor_id') as string),
     appt_date: formData.get('appt_date'),
     appt_time: formData.get('appt_time'),
-    reason: formData.get('reason')
+    reason: formData.get('reason')?.toString().trim() || null
   }
 
   const res = await fetch(`${API_URL}/appointments/`, {
@@ -29,12 +42,12 @@ export async function bookAppointmentAction(formData: FormData) {
   })
 
   if (!res.ok) {
-    console.error(await res.text())
-    return { error: "Failed to book appointment" }
+    return { error: await getActionError(res, 'Failed to book appointment') }
   }
 
   revalidatePath('/patient/appointments')
   revalidatePath('/patient/home')
+  return { success: true }
 }
 
 export async function updateProfileAction(formData: FormData) {

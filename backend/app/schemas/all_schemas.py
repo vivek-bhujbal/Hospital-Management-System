@@ -279,9 +279,10 @@ class PrescriptionBase(BaseModel):
 
 class PrescriptionCreate(PrescriptionBase):
     appointment_id: int = Field(gt=0)
-    diagnosis: str = Field(min_length=1)
-    medicine: str = Field(min_length=1)
-    dosage: str = Field(min_length=1)
+    diagnosis: str = Field(min_length=1, max_length=4000)
+    medicine: str = Field(min_length=1, max_length=150)
+    dosage: str = Field(min_length=1, max_length=2000)
+    notes: Optional[str] = Field(default=None, max_length=8000)
 
 class PrescriptionResponse(PrescriptionBase):
     id: int

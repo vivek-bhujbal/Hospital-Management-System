@@ -6,7 +6,7 @@ idempotent Super Admin bootstrap. It never drops data.
 
 ## Required private environment variables
 
-Set these in the ignored root `.env` before starting Docker:
+Set these in the ignored `backend/.env` before starting Docker:
 
 ```env
 APP_ENV=development
