@@ -5,6 +5,7 @@ import { useRef, useState } from 'react'
 import { createStaffAccountAction, setHospitalManagerActiveAction } from '@/app/actions/staff'
 import type { AccountSummary } from '@/components/AdminAccountsPanel'
 import SubmitButton from '@/components/SubmitButton'
+import SpecializationCombobox from '@/components/SpecializationCombobox'
 
 const RECEPTIONIST_PAGE_ACCESS = [
   ['can_register_patient', 'Patient registration', 'Create new patient records'],
@@ -75,7 +76,7 @@ export default function StaffAccountsPanel({ accounts }: { accounts: AccountSumm
 
           {role === 'doctor' && (
             <>
-              <input name="specialization" aria-label="Doctor specialization" required placeholder="Specialization" className="rounded-lg border p-3" />
+              <SpecializationCombobox id="staff-doctor-specialization" className="rounded-lg border bg-white p-3" />
               <input name="consultation_fee" aria-label="Doctor consultation fee" required type="number" min="0.01" step="0.01" placeholder="Consultation fee" className="rounded-lg border p-3" />
               <input name="contact" aria-label="Doctor contact number" maxLength={20} placeholder="Contact" className="rounded-lg border p-3" />
               <div className="grid grid-cols-2 gap-2">

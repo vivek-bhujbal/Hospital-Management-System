@@ -5,30 +5,7 @@ import ClientForm from '@/components/ClientForm'
 import SubmitButton from '@/components/SubmitButton'
 import { editDoctorAction } from '@/app/actions/admin'
 import ResetPasswordForm from './ResetPasswordForm'
-
-const SPECIALIZATIONS = [
-  "General Physician", "Internal Medicine", "Family Medicine", "Cardiology", "Cardiac Surgery",
-  "Neurology", "Neurosurgery", "Orthopedics", "Pediatric Orthopedics", "Spine Surgery", "Sports Medicine",
-  "Pediatrics", "Neonatology", "Pediatric Surgery", "Gynecology", "Obstetrics", "Obstetrics & Gynecology (OB-GYN)",
-  "Dermatology", "Venereology", "ENT (Otolaryngology)", "Ophthalmology", "Pulmonology", "Gastroenterology",
-  "Hepatology", "Nephrology", "Urology", "Endocrinology", "Diabetology", "Rheumatology", "Oncology",
-  "Medical Oncology", "Surgical Oncology", "Radiation Oncology", "Hematology", "Hematology & Oncology",
-  "Psychiatry", "Clinical Psychology", "Psychology", "Anesthesiology", "Critical Care Medicine",
-  "Emergency Medicine", "Trauma Surgery", "General Surgery", "Plastic Surgery", "Cosmetic Surgery",
-  "Reconstructive Surgery", "Vascular Surgery", "Thoracic Surgery", "Cardiothoracic Surgery",
-  "Colorectal Surgery", "Bariatric Surgery", "Transplant Surgery", "Oral & Maxillofacial Surgery",
-  "Dentistry", "Orthodontics", "Prosthodontics", "Periodontics", "Endodontics", "Pediatric Dentistry",
-  "Radiology", "Interventional Radiology", "Nuclear Medicine", "Pathology", "Clinical Pathology",
-  "Forensic Pathology", "Microbiology", "Immunology", "Allergy & Immunology", "Infectious Disease",
-  "Geriatrics", "Geriatric Medicine", "Palliative Care", "Pain Management", "Physical Medicine & Rehabilitation (PM&R)",
-  "Physiotherapy", "Occupational Therapy", "Speech Therapy", "Audiology", "Sleep Medicine", "Reproductive Medicine",
-  "Fertility (IVF)", "Maternal-Fetal Medicine", "Clinical Genetics", "Preventive Medicine", "Public Health Medicine",
-  "Lifestyle Medicine", "Aviation Medicine", "Hyperbaric Medicine", "Sports Rehabilitation", "Addiction Medicine",
-  "Clinical Pharmacology", "Nutrition & Dietetics", "Medical Genetics", "Cosmetic Dermatology", "Hand Surgery",
-  "Foot & Ankle Surgery", "Breast Surgery", "Pediatric Cardiology", "Pediatric Neurology", "Pediatric Endocrinology",
-  "Pediatric Nephrology", "Pediatric Gastroenterology", "Pediatric Pulmonology", "Pediatric Oncology",
-  "Pediatric Hematology", "Pediatric Urology", "Pediatric Rheumatology"
-];
+import SpecializationCombobox from '@/components/SpecializationCombobox'
 
 export default async function EditDoctorPage({ params }: { params: { id: string } }) {
   const doctorId = parseInt(params.id)
@@ -69,12 +46,11 @@ export default async function EditDoctorPage({ params }: { params: { id: string 
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Specialization</label>
-              <select name="specialization" defaultValue={doctor.specialization} required className="w-full border p-2 rounded bg-white text-gray-700">
-                <option value="">Select Specialization...</option>
-                {SPECIALIZATIONS.map(spec => (
-                  <option key={spec} value={spec}>{spec}</option>
-                ))}
-              </select>
+              <SpecializationCombobox
+                id="edit-doctor-specialization"
+                defaultValue={doctor.specialization}
+                className="w-full rounded border bg-white p-2 text-gray-700"
+              />
             </div>
 
             <div>

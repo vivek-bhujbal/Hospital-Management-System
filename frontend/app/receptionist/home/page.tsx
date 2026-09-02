@@ -6,23 +6,26 @@ import {
   Hourglass,
   UserCheck,
   Users,
+  UsersRound,
 } from 'lucide-react'
 
 import AutoRefresh from '@/components/AutoRefresh'
 import { fetchAPI } from '@/lib/api'
 import { hasPermission, PERMISSIONS } from '@/lib/permissions'
-import { dateValue, ReceptionAppointment, ReceptionBill } from '@/lib/receptionistTypes'
+import { dateValue, ReceptionAppointment, ReceptionBill, ReceptionPatient } from '@/lib/receptionistTypes'
 import { getCurrentPermissions } from '@/lib/serverPermissions'
 
 export default async function ReceptionistHome() {
   const today = dateValue()
-  const [appointments, bills, permissions] = await Promise.all([
+  const [patients, appointments, bills, permissions] = await Promise.all([
+    fetchAPI('/patients/') as Promise<ReceptionPatient[]>,
     fetchAPI(`/appointments/?date=${today}`) as Promise<ReceptionAppointment[]>,
     fetchAPI('/billing/').catch(() => []) as Promise<ReceptionBill[]>,
     getCurrentPermissions(),
   ])
 
   const metrics = [
+    { label: 'Registered patients', value: patients.length, icon: UsersRound, color: 'text-cyan-700 bg-cyan-50' },
     { label: "Today's appointments", value: appointments.length, icon: CalendarDays, color: 'text-blue-600 bg-blue-50' },
     { label: 'Checked-in patients', value: appointments.filter((item) => item.status === 'checked_in').length, icon: UserCheck, color: 'text-emerald-600 bg-emerald-50' },
     { label: 'Waiting patients', value: appointments.filter((item) => ['confirmed', 'checked_in'].includes(item.status)).length, icon: Hourglass, color: 'text-amber-600 bg-amber-50' },
@@ -56,7 +59,7 @@ export default async function ReceptionistHome() {
         </p>
       </div>
 
-      <section aria-label="Today's overview" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <section aria-label="Front-desk overview" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         {metrics.map(({ label, value, icon: Icon, color }) => (
           <div key={label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className={`inline-flex rounded-xl p-2.5 ${color}`}><Icon className="h-5 w-5" /></div>

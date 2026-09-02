@@ -1,5 +1,6 @@
 export interface ReceptionPatient {
   id: number
+  user_id: number | null
   name: string
   age: number | null
   gender: 'male' | 'female' | 'other' | null
