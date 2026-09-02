@@ -17,6 +17,7 @@ from app.schemas.all_schemas import (
     EmployeeUpdate,
 )
 from app.services.audit_service import record_audit_event
+from app.services.account_service import add_user_account
 
 
 router = APIRouter(dependencies=[Depends(require_role(UserRole.admin))])
@@ -59,20 +60,16 @@ def create_employee(
     db: Session = Depends(get_db),
     current_user: User = Depends(allow_staff_create),
 ):
-    if db.query(User).filter(User.email == emp_in.email).first():
-        raise HTTPException(status_code=400, detail="Email already registered")
-
     try:
         new_user = User(
             name=emp_in.name,
-            email=emp_in.email,
+            email=str(emp_in.email),
             password_hash=get_password_hash(emp_in.password),
             role="receptionist",
             is_active=True,
             is_email_verified=True,
         )
-        db.add(new_user)
-        db.flush()
+        add_user_account(db, new_user)
 
         new_employee = Employee(
             user_id=new_user.id,

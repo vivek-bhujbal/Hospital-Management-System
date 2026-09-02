@@ -1,3 +1,6 @@
+x-backend-environment: &backend-environment
+  DATABASE_HOST_OVERRIDE: db
+
 services:
   db:
     image: mysql:8.0
@@ -26,6 +29,7 @@ services:
       context: ./backend
     restart: "no"
     env_file: ./backend/.env
+    environment: *backend-environment
     command: ["alembic", "upgrade", "head"]
     depends_on:
       db:
@@ -37,6 +41,7 @@ services:
     restart: "no"
     # Super Admin credentials are owned by the backend environment file.
     env_file: ./backend/.env
+    environment: *backend-environment
     command: ["python", "-m", "app.services.super_admin_bootstrap"]
     depends_on:
       migrate:
@@ -48,6 +53,7 @@ services:
     profiles: ["tools"]
     restart: "no"
     env_file: ./backend/.env
+    environment: *backend-environment
     command: ["python", "reset_db.py", "--confirm-database", "hospital_management"]
     depends_on:
       db:
@@ -59,6 +65,7 @@ services:
     profiles: ["tools"]
     restart: "no"
     env_file: ./backend/.env
+    environment: *backend-environment
     command: ["python", "verify_clean_database.py"]
     depends_on:
       bootstrap:
@@ -71,6 +78,7 @@ services:
     # Runtime mail/auth configuration is maintained with the backend service.
     env_file: ./backend/.env
     environment:
+      <<: *backend-environment
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
     ports:
@@ -93,6 +101,7 @@ services:
     command: ["celery", "-A", "app.celery_app.celery_app", "worker", "--loglevel=info", "--concurrency=4"]
     env_file: ./backend/.env
     environment:
+      <<: *backend-environment
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
     depends_on:

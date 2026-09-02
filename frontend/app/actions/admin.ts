@@ -65,7 +65,10 @@ export async function editDoctorAction(formData: FormData) {
     body: JSON.stringify(payload)
   })
 
-  if (!res.ok) return { error: "Failed to update doctor" }
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}))
+    return { error: errorData.detail || "Failed to update doctor" }
+  }
   revalidatePath('/admin/doctors')
   redirect('/admin/doctors')
 }

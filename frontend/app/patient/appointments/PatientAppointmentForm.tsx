@@ -29,6 +29,13 @@ interface PatientAppointmentFormProps {
   appointments: PatientAppointment[]
 }
 
+type SlotState = 'available' | 'past' | 'booked'
+
+interface AppointmentSlot {
+  time: string
+  state: SlotState
+}
+
 function dateValue(date = new Date()): string {
   const offset = date.getTimezoneOffset()
   return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 10)
@@ -65,7 +72,7 @@ export default function PatientAppointmentForm({ patientId, doctors, appointment
 
   const selectedDoctor = doctors.find((doctor) => String(doctor.id) === doctorId)
   const today = dateValue()
-  const availableSlots = useMemo(() => {
+  const appointmentSlots = useMemo<AppointmentSlot[]>(() => {
     if (!selectedDoctor || !appointmentDate) return []
 
     const start = toMinutes(shortTime(selectedDoctor.timing_start, '09:00'))
@@ -77,15 +84,19 @@ export default function PatientAppointmentForm({ patientId, doctors, appointment
         .filter((appointment) => appointment.appt_date === appointmentDate && appointment.status !== 'cancelled')
         .map((appointment) => shortTime(appointment.appt_time, '')),
     )
-    const slots: string[] = []
+    const slots: AppointmentSlot[] = []
 
     for (let minutes = start; minutes < end; minutes += 30) {
       const slot = toTime(minutes)
       const isPastToday = appointmentDate === today && minutes <= currentMinutes
-      if (!isPastToday && !patientBookings.has(slot)) slots.push(slot)
+      slots.push({
+        time: slot,
+        state: isPastToday ? 'past' : patientBookings.has(slot) ? 'booked' : 'available',
+      })
     }
     return slots
   }, [appointmentDate, appointments, selectedDoctor, today])
+  const availableSlotCount = appointmentSlots.filter((slot) => slot.state === 'available').length
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -147,18 +158,40 @@ export default function PatientAppointmentForm({ patientId, doctors, appointment
       )}
 
       <fieldset>
-        <legend className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">Available time</legend>
-        {availableSlots.length > 0 ? (
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
-            {availableSlots.map((slot) => (
-              <button key={slot} type="button" onClick={() => { setAppointmentTime(slot); setError(null) }} aria-pressed={appointmentTime === slot} className={`rounded-xl border px-3 py-2.5 text-sm font-semibold transition ${appointmentTime === slot ? 'border-teal-700 bg-teal-700 text-white shadow-md shadow-teal-900/10' : 'border-slate-200 bg-white text-slate-700 hover:border-teal-300 hover:bg-teal-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'}`}>
-                {displayTime(slot)}
-              </button>
-            ))}
-          </div>
+        <legend className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">Appointment time</legend>
+        {appointmentDate === today && (
+          <p className="-mt-1 mb-2 text-xs text-slate-500 dark:text-slate-400">Past times remain visible but cannot be booked.</p>
+        )}
+        {appointmentSlots.length > 0 ? (
+          <>
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
+              {appointmentSlots.map((slot) => (
+                <button
+                  key={slot.time}
+                  type="button"
+                  disabled={slot.state !== 'available'}
+                  onClick={() => { setAppointmentTime(slot.time); setError(null) }}
+                  aria-pressed={appointmentTime === slot.time}
+                  className={`min-h-[3.65rem] rounded-xl border px-3 py-2 text-sm font-semibold transition ${appointmentTime === slot.time ? 'border-teal-700 bg-teal-700 text-white shadow-md shadow-teal-900/10' : slot.state === 'available' ? 'border-slate-200 bg-white text-slate-700 hover:border-teal-300 hover:bg-teal-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200' : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-500'}`}
+                >
+                  <span className="block">{displayTime(slot.time)}</span>
+                  {slot.state !== 'available' && (
+                    <span className="mt-0.5 block text-[10px] font-medium uppercase tracking-wide">
+                      {slot.state === 'past' ? 'Past' : 'Already booked'}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+            {availableSlotCount === 0 && (
+              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                {appointmentDate === today ? 'No future slots remain today. Please choose another date.' : 'All slots conflict with an existing appointment. Please choose another date or doctor.'}
+              </div>
+            )}
+          </>
         ) : (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-            {appointmentDate === today ? 'No future slots remain today. Please choose another date.' : 'No slots are available for this date. Please choose another date or doctor.'}
+            This doctor does not have a valid appointment schedule configured.
           </div>
         )}
       </fieldset>

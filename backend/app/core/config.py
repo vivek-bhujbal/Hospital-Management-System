@@ -1,10 +1,12 @@
-from pydantic import ConfigDict
+from pydantic import ConfigDict, model_validator
 from pydantic_settings import BaseSettings
+from sqlalchemy.engine import make_url
 
 class Settings(BaseSettings):
     model_config = ConfigDict(env_file=".env", extra="allow")
 
     DATABASE_URL: str
+    DATABASE_HOST_OVERRIDE: str | None = None
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
@@ -24,6 +26,17 @@ class Settings(BaseSettings):
     SUPER_ADMIN_EMAIL: str | None = None
     SUPER_ADMIN_PASSWORD: str | None = None
     SUPER_ADMIN_NAME: str | None = None
+
+    @model_validator(mode="after")
+    def apply_database_host_override(self):
+        """Allow containers to replace only the host without duplicating credentials."""
+        if self.DATABASE_HOST_OVERRIDE:
+            url = make_url(self.DATABASE_URL)
+            if url.host is not None:
+                self.DATABASE_URL = url.set(
+                    host=self.DATABASE_HOST_OVERRIDE,
+                ).render_as_string(hide_password=False)
+        return self
 
     @property
     def cors_origins(self) -> list[str]:

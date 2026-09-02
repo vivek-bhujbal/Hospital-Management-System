@@ -21,6 +21,7 @@ from app.schemas.all_schemas import (
     SystemSettingCreate, SystemSettingResponse, SystemSettingUpdate,
 )
 from app.services.audit_service import record_audit_event, request_audit_metadata
+from app.services.account_service import add_user_account
 
 
 router = APIRouter(
@@ -309,16 +310,13 @@ def create_admin(
     admin_in: AdminCreate, request: Request, db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(Permission.staff_manage_roles)),
 ):
-    if db.query(User).filter(User.email == admin_in.email).first():
-        raise HTTPException(status_code=409, detail="Email already registered")
     item = User(
-        name=admin_in.name.strip(), email=str(admin_in.email).lower(),
+        name=admin_in.name.strip(), email=str(admin_in.email),
         password_hash=get_password_hash(admin_in.password), role=UserRole.admin.value,
         is_active=True, is_email_verified=True,
         email_verified_at=datetime.now(timezone.utc),
     )
-    db.add(item)
-    db.flush()
+    add_user_account(db, item)
     record_audit_event(
         db, actor=current_user, action="admin.created", resource_type="user",
         resource_id=str(item.id), new_values={"email": item.email, "role": item.role},

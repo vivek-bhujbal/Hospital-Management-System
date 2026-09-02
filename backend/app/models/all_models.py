@@ -2,6 +2,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Column,
+    Computed,
     Date,
     DECIMAL,
     Enum,
@@ -16,14 +17,24 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.orm import validates
 from app.database import Base
+from app.core.identity import normalize_email
 from app.core.roles import ROLE_VALUES
 
 class User(Base):
     __tablename__ = 'users'
+    __table_args__ = (
+        UniqueConstraint('email_normalized', name='uq_users_email_normalized'),
+    )
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
     email = Column(String(150), unique=True, nullable=False)
+    email_normalized = Column(
+        String(150),
+        Computed('lower(trim(email))'),
+        nullable=True,
+    )
     password_hash = Column(String(255), nullable=False)
     role = Column(Enum(*ROLE_VALUES, name='user_role'), nullable=False)
     is_active = Column(Boolean, default=True)
@@ -36,6 +47,10 @@ class User(Base):
     last_login_at = Column(TIMESTAMP, nullable=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+    @validates('email')
+    def normalize_account_email(self, _key, value):
+        return normalize_email(value)
 
 class Patient(Base):
     __tablename__ = 'patients'

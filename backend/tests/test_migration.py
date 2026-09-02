@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect, text
@@ -92,5 +93,33 @@ def test_migration_refuses_to_drop_populated_unmanaged_enterprise_table(tmp_path
             assert connection.execute(
                 text("SELECT name FROM medicine_categories WHERE id = 1")
             ).scalar_one() == "Preserve me"
+    finally:
+        settings.DATABASE_URL = previous_url
+
+
+def test_global_email_migration_refuses_existing_normalized_duplicates(tmp_path):
+    database_path = tmp_path / "duplicate-emails.db"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    previous_url = settings.DATABASE_URL
+    settings.DATABASE_URL = database_url
+    try:
+        config = _config(database_url)
+        command.upgrade(config, "20260901_0011")
+        engine = create_engine(database_url)
+        with engine.begin() as connection:
+            connection.execute(text(
+                "INSERT INTO users (name, email, password_hash, role) VALUES "
+                "('First', 'Duplicate@Example.com', 'hash', 'patient'), "
+                "('Second', ' duplicate@example.COM ', 'hash', 'doctor')"
+            ))
+
+        with pytest.raises(RuntimeError, match="did not delete or merge any user"):
+            command.upgrade(config, "head")
+
+        with engine.connect() as connection:
+            emails = connection.execute(
+                text("SELECT email FROM users ORDER BY id")
+            ).scalars().all()
+            assert emails == ["Duplicate@Example.com", " duplicate@example.COM "]
     finally:
         settings.DATABASE_URL = previous_url

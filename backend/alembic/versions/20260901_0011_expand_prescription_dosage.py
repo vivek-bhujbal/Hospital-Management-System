@@ -18,6 +18,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    if "prescriptions" not in sa.inspect(op.get_bind()).get_table_names():
+        return
     with op.batch_alter_table("prescriptions") as batch_op:
         batch_op.alter_column(
             "dosage",
@@ -28,6 +30,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if "prescriptions" not in sa.inspect(op.get_bind()).get_table_names():
+        return
     with op.batch_alter_table("prescriptions") as batch_op:
         batch_op.alter_column(
             "dosage",

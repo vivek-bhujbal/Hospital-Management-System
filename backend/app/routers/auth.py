@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from app.core.deps import get_current_user, is_user_access_active
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 from app.database import get_db
 from app.schemas.all_schemas import UserCreate, UserResponse, RoleEnum, PatientRegister, EmployeePermissionResponse, GenderEnum
 from app.models.all_models import User, Patient, Doctor, Employee, EmployeePermission
@@ -9,6 +8,7 @@ from app.core.security import get_password_hash, verify_password, create_access_
 from app.core.config import settings
 from app.services.authorization import get_effective_permissions
 from app.services.email_service import send_verification_email, send_password_reset_email
+from app.services.account_service import add_user_account, find_user_by_email
 from pydantic import BaseModel, EmailStr, field_validator
 from typing import List, Optional
 import secrets
@@ -69,31 +69,6 @@ def require_email_delivery(delivered: bool) -> None:
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def register(user_in: PatientRegister, db: Session = Depends(get_db)):
-    # Check if user already exists
-    user = db.query(User).filter(User.email == user_in.email).first()
-    if user:
-        if user.is_email_verified:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="An account with this email already exists. Please login."
-            )
-        else:
-            # Resend verification if account exists but not verified
-            token = generate_token()
-            user.email_verification_token_hash = hash_token(token)
-            user.email_verification_expires_at = utcnow() + timedelta(hours=24)
-            db.commit()
-            
-            verification_link = f"{FRONTEND_URL}/verify-email?token={token}"
-            require_email_delivery(
-                send_verification_email(user.email, user.name, verification_link)
-            )
-            
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Your email is not verified. A new verification email has been sent."
-            )
-    
     # Hash the password
     hashed_password = get_password_hash(user_in.password)
     
@@ -105,7 +80,7 @@ def register(user_in: PatientRegister, db: Session = Depends(get_db)):
     # Create User (force role to patient)
     new_user = User(
         name=user_in.name,
-        email=user_in.email,
+        email=str(user_in.email),
         password_hash=hashed_password,
         role=RoleEnum.patient,
         is_active=True,
@@ -113,9 +88,8 @@ def register(user_in: PatientRegister, db: Session = Depends(get_db)):
         email_verification_token_hash=token_hash,
         email_verification_expires_at=expires_at
     )
-    db.add(new_user)
     try:
-        db.flush()
+        add_user_account(db, new_user)
         new_profile = Patient(
             user_id=new_user.id,
             name=new_user.name,
@@ -127,6 +101,9 @@ def register(user_in: PatientRegister, db: Session = Depends(get_db)):
         db.add(new_profile)
         db.commit()
         db.refresh(new_user)
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception:
         db.rollback()
         raise HTTPException(
@@ -144,7 +121,7 @@ def register(user_in: PatientRegister, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=TokenResponse)
 def login(login_data: LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == login_data.email).first()
+    user = find_user_by_email(db, login_data.email)
     
     if not user or not verify_password(login_data.password, user.password_hash):
         raise HTTPException(
@@ -208,7 +185,7 @@ def verify_email(data: VerifyEmailRequest, db: Session = Depends(get_db)):
 
 @router.post("/resend-verification")
 def resend_verification(data: ResendVerificationRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == data.email).first()
+    user = find_user_by_email(db, data.email)
     
     if not user:
         # Silently succeed to prevent email enumeration
@@ -231,7 +208,7 @@ def resend_verification(data: ResendVerificationRequest, db: Session = Depends(g
 
 @router.post("/forgot-password")
 def forgot_password(data: ForgotPasswordRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == data.email).first()
+    user = find_user_by_email(db, data.email)
     
     if not user:
         # Silently succeed to prevent email enumeration

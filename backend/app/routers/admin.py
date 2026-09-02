@@ -11,6 +11,7 @@ from app.core.permissions import Permission
 from app.core.roles import UserRole
 from app.core.security import get_password_hash
 from app.services.audit_service import record_audit_event, request_audit_metadata
+from app.services.account_service import add_user_account, update_user_email
 
 router = APIRouter(dependencies=[Depends(require_role(UserRole.admin))])
 allow_reports = require_permission(Permission.reports_view)
@@ -102,22 +103,17 @@ def create_staff_account(
     db: Session = Depends(get_db),
     current_user: User = Depends(allow_staff_create),
 ):
-    normalized_email = str(staff_in.email).lower()
-    if db.query(User).filter(User.email == normalized_email).first():
-        raise HTTPException(status_code=409, detail="Email already registered")
-
     try:
         user = User(
             name=staff_in.name,
-            email=normalized_email,
+            email=str(staff_in.email),
             password_hash=get_password_hash(staff_in.password),
             role=staff_in.role.value,
             is_active=True,
             is_email_verified=True,
             email_verified_at=datetime.now(timezone.utc),
         )
-        db.add(user)
-        db.flush()
+        add_user_account(db, user)
 
         profile_id = None
         if staff_in.role == UserRole.doctor:
@@ -236,21 +232,16 @@ def admin_create_doctor(
     db: Session = Depends(get_db),
     current_user: User = Depends(allow_doctors_manage),
 ):
-    # Check if email exists
-    if db.query(User).filter(User.email == doc_in.email).first():
-        raise HTTPException(status_code=409, detail="Email already registered")
-    
     # 1. Create User
     new_user = User(
         name=doc_in.name,
-        email=doc_in.email,
+        email=str(doc_in.email),
         password_hash=get_password_hash(doc_in.password),
         role='doctor',
         is_active=True,
         is_email_verified=True,
     )
-    db.add(new_user)
-    db.flush() # get user ID
+    add_user_account(db, new_user)
     
     # 2. Create Doctor
     new_doc = Doctor(
@@ -347,11 +338,8 @@ def admin_update_doctor(
     
     user = db.query(User).filter(User.id == doc.user_id).first()
     if user:
-        if doc_in.email and doc_in.email != user.email:
-            existing = db.query(User).filter(User.email == doc_in.email, User.id != user.id).first()
-            if existing:
-                raise HTTPException(status_code=409, detail="Email already registered")
-            user.email = doc_in.email
+        if doc_in.email:
+            update_user_email(db, user, doc_in.email)
         doc.email = user.email
 
     new_values = {
