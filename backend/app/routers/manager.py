@@ -1,16 +1,27 @@
-from datetime import date, datetime
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from typing import List
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.deps import require_exact_role, require_permission
+from app.core.config import settings
 from app.core.permissions import Permission
 from app.core.roles import UserRole
 from app.database import get_db
-from app.models.all_models import Appointment, Billing, Department, Doctor, Employee, Patient, User
+from app.models.all_models import (
+    Appointment,
+    Billing,
+    Department,
+    Doctor,
+    Employee,
+    FinancialTransaction,
+    Patient,
+    User,
+)
 from app.schemas.all_schemas import (
     ApptStatusEnum,
     DailyReport,
@@ -18,6 +29,7 @@ from app.schemas.all_schemas import (
     DepartmentStats,
     DoctorWorkload,
     ManagerAppointment,
+    ManagerBill,
     ManagerDepartmentSummary,
     ManagerDoctor,
     ManagerOverview,
@@ -45,10 +57,31 @@ OPERATIONAL_STAFF_ROLES = (
 )
 
 
+def _hospital_timezone():
+    try:
+        return ZoneInfo(settings.HOSPITAL_TIMEZONE)
+    except ZoneInfoNotFoundError:
+        return timezone.utc
+
+
+def _hospital_today() -> date:
+    return datetime.now(_hospital_timezone()).date()
+
+
+def _utc_bounds(value: date) -> tuple[datetime, datetime]:
+    hospital_tz = _hospital_timezone()
+    start = datetime.combine(value, time.min, tzinfo=hospital_tz)
+    end = datetime.combine(value + timedelta(days=1), time.min, tzinfo=hospital_tz)
+    return (
+        start.astimezone(timezone.utc).replace(tzinfo=None),
+        end.astimezone(timezone.utc).replace(tzinfo=None),
+    )
+
+
 def _availability(*, active: bool, shift_start=None, shift_end=None) -> str:
     if not active:
         return "Unavailable"
-    now = datetime.now().time()
+    now = datetime.now(_hospital_timezone()).time().replace(tzinfo=None)
     if shift_start and now < shift_start:
         return "Off shift"
     if shift_end and now >= shift_end:
@@ -61,7 +94,7 @@ def get_overview(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission(Permission.reports_view)),
 ):
-    today = date.today()
+    today = _hospital_today()
     today_query = db.query(Appointment).filter(Appointment.appt_date == today)
     patient_flow = {
         status: today_query.filter(Appointment.status == status).count()
@@ -109,9 +142,13 @@ def get_overview(
 
     return ManagerOverview(
         today_appointments=today_query.count(),
+        total_appointments=db.query(Appointment).count(),
         total_patients=db.query(Patient).count(),
         active_doctors=active_doctors,
         active_staff=active_staff,
+        total_completed_consultations=db.query(Appointment).filter(
+            Appointment.status == 'completed',
+        ).count(),
         completed_consultations=patient_flow["completed"],
         pending_appointments=sum(patient_flow[status] for status in PENDING_APPOINTMENT_STATUSES),
         operational_alerts=alerts,
@@ -170,14 +207,25 @@ def get_appointments(
 
 @router.get("/patients", response_model=List[ManagerPatient])
 def get_patients(
+    registered_on: date | None = None,
     db: Session = Depends(get_db),
     _: User = Depends(require_permission(Permission.patients_view)),
 ):
-    today = date.today()
+    today = _hospital_today()
     result = []
-    for patient in db.query(Patient).order_by(Patient.name):
+    patients = db.query(Patient)
+    if registered_on:
+        registered_start, registered_end = _utc_bounds(registered_on)
+        patients = patients.filter(
+            Patient.created_at >= registered_start,
+            Patient.created_at < registered_end,
+        )
+    for patient in patients.order_by(Patient.name):
         appointments = db.query(Appointment).filter(Appointment.patient_id == patient.id)
-        last_date = appointments.filter(Appointment.appt_date <= today).with_entities(
+        last_date = appointments.filter(
+            Appointment.appt_date <= today,
+            Appointment.status == 'completed',
+        ).with_entities(
             func.max(Appointment.appt_date),
         ).scalar()
         next_date = appointments.filter(
@@ -190,6 +238,7 @@ def get_patients(
             age=patient.age,
             gender=patient.gender,
             contact=patient.contact,
+            created_at=patient.created_at,
             appointment_count=appointments.count(),
             last_appointment_date=last_date,
             next_appointment_date=next_date,
@@ -197,12 +246,41 @@ def get_patients(
     return result
 
 
+@router.get('/bills', response_model=List[ManagerBill])
+def get_bills(
+    target_date: date | None = None,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission(Permission.billing_report)),
+):
+    query = db.query(
+        Billing,
+        Patient.name.label('patient_name'),
+    ).join(
+        Patient, Billing.patient_id == Patient.id,
+    ).join(
+        Appointment, Billing.appointment_id == Appointment.id,
+    )
+    if target_date:
+        query = query.filter(Appointment.appt_date == target_date)
+    rows = query.order_by(Billing.id.desc()).all()
+    return [ManagerBill(
+        id=bill.id,
+        appointment_id=bill.appointment_id,
+        patient_id=bill.patient_id,
+        patient_name=patient_name,
+        amount=bill.amount,
+        status=bill.status,
+        payment_method=bill.payment_method,
+        paid_at=bill.paid_at,
+    ) for bill, patient_name in rows]
+
+
 @router.get("/doctors", response_model=List[ManagerDoctor])
 def get_doctors(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission(Permission.doctors_view)),
 ):
-    today = date.today()
+    today = _hospital_today()
     department_names = {
         department.department_id: department.name
         for department in db.query(Department).all()
@@ -278,33 +356,56 @@ def get_daily_report(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission(Permission.reports_view)),
 ):
-    report_date = target_date or date.today()
+    report_date = target_date or _hospital_today()
+    report_start, report_end = _utc_bounds(report_date)
     appointments = db.query(Appointment).filter(Appointment.appt_date == report_date)
-    bills = db.query(Billing).filter(func.date(Billing.created_at) == report_date)
-    revenue = db.query(func.coalesce(func.sum(Billing.amount), 0)).filter(
-        func.date(Billing.paid_at) == report_date,
-        Billing.status == "paid",
+    bills = db.query(Billing).join(
+        Appointment, Billing.appointment_id == Appointment.id,
+    ).filter(Appointment.appt_date == report_date)
+    payments = db.query(FinancialTransaction).filter(
+        FinancialTransaction.transaction_type == "payment",
+    )
+    revenue = payments.with_entities(
+        func.coalesce(func.sum(FinancialTransaction.amount), 0),
+    ).filter(
+        FinancialTransaction.transaction_date >= report_start,
+        FinancialTransaction.transaction_date < report_end,
+    ).scalar()
+    total_revenue = payments.with_entities(
+        func.coalesce(func.sum(FinancialTransaction.amount), 0),
     ).scalar()
     return DailyReport(
         date=report_date,
-        patient_count=db.query(Patient).filter(func.date(Patient.created_at) == report_date).count(),
+        patient_count=db.query(Patient).filter(
+            Patient.created_at >= report_start,
+            Patient.created_at < report_end,
+        ).count(),
         appointment_count=appointments.count(),
         completed_consultations=appointments.filter(Appointment.status == "completed").count(),
         cancelled_appointments=appointments.filter(Appointment.status == "cancelled").count(),
         pending_bills=bills.filter(Billing.status == "pending").count(),
         paid_bills=bills.filter(Billing.status == "paid").count(),
         revenue_summary=Decimal(revenue or 0),
+        total_appointment_count=db.query(Appointment).count(),
+        total_completed_consultations=db.query(Appointment).filter(
+            Appointment.status == "completed",
+        ).count(),
+        total_paid_bills=db.query(Billing).filter(Billing.status == "paid").count(),
+        total_revenue_summary=Decimal(total_revenue or 0),
     )
 
 
 @router.get("/analytics/doctors", response_model=List[DoctorWorkload])
 def get_doctor_analytics(
+    target_date: date | None = None,
     db: Session = Depends(get_db),
     _: User = Depends(require_permission(Permission.reports_view)),
 ):
     rows = []
     for doctor in db.query(Doctor).order_by(Doctor.name):
         base = db.query(Appointment).filter(Appointment.doctor_id == doctor.id)
+        if target_date:
+            base = base.filter(Appointment.appt_date == target_date)
         rows.append(DoctorWorkload(
             doctor_id=doctor.id,
             name=doctor.name,
@@ -318,6 +419,7 @@ def get_doctor_analytics(
 
 @router.get("/analytics/departments", response_model=List[DepartmentStats])
 def get_department_analytics(
+    target_date: date | None = None,
     db: Session = Depends(get_db),
     _: User = Depends(require_permission(Permission.reports_view)),
 ):
@@ -327,9 +429,10 @@ def get_department_analytics(
             row[0]
             for row in db.query(Doctor.id).filter(Doctor.department_id == department.department_id)
         ]
-        appointment_count = db.query(Appointment).filter(
-            Appointment.doctor_id.in_(doctor_ids),
-        ).count() if doctor_ids else 0
+        appointments = db.query(Appointment).filter(Appointment.doctor_id.in_(doctor_ids))
+        if target_date:
+            appointments = appointments.filter(Appointment.appt_date == target_date)
+        appointment_count = appointments.count() if doctor_ids else 0
         rows.append(DepartmentStats(
             department_id=department.department_id,
             name=department.name,

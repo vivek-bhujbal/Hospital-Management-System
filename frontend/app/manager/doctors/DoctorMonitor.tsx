@@ -33,7 +33,7 @@ export default function DoctorMonitor({ doctors }: { doctors: ManagerDoctor[] })
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-500">{doctors.length ? 'No doctors match the selected filters.' : 'No doctors available.'}</div>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><div className="overflow-x-auto"><table className="min-w-full divide-y divide-slate-200 text-sm">
-          <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-4">Doctor</th><th className="px-5 py-4">Department</th><th className="px-5 py-4">Schedule</th><th className="px-5 py-4">Status</th><th className="px-5 py-4">Availability</th><th className="px-5 py-4">Today</th><th className="px-5 py-4">Pending</th><th className="px-5 py-4">Completed</th></tr></thead>
+          <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-4">Doctor</th><th className="px-5 py-4">Department</th><th className="px-5 py-4">Schedule</th><th className="px-5 py-4">Status</th><th className="px-5 py-4">Availability</th><th className="px-5 py-4">Today</th><th className="px-5 py-4">Total pending</th><th className="px-5 py-4">Total completed</th></tr></thead>
           <tbody className="divide-y divide-slate-100">{filtered.map((doctor) => (
             <tr key={doctor.id} className="hover:bg-slate-50">
               <td className="px-5 py-4"><p className="font-semibold text-slate-900">{doctor.name}</p><p className="text-slate-500">{doctor.specialization || 'Specialty not recorded'}</p></td>

@@ -15,10 +15,12 @@ export interface ManagerDepartmentSummary {
 
 export interface ManagerOverview {
   today_appointments: number
+  total_appointments: number
   total_patients: number
   active_doctors: number
   active_staff: number
   completed_consultations: number
+  total_completed_consultations: number
   pending_appointments: number
   operational_alerts: string[]
   patient_flow: Record<ManagerAppointmentStatus, number>
@@ -46,6 +48,7 @@ export interface ManagerPatient {
   age: number | null
   gender: 'male' | 'female' | 'other' | null
   contact: string | null
+  created_at: string
   appointment_count: number
   last_appointment_date: string | null
   next_appointment_date: string | null
@@ -78,6 +81,17 @@ export interface ManagerStaff {
   availability: string
 }
 
+export interface ManagerBill {
+  id: number
+  appointment_id: number
+  patient_id: number
+  patient_name: string
+  amount: number | string
+  status: 'pending' | 'paid'
+  payment_method: 'cash' | 'card' | 'upi' | null
+  paid_at: string | null
+}
+
 export interface ManagerDepartment {
   department_id: number
   name: string
@@ -94,6 +108,10 @@ export interface ManagerDailyReport {
   pending_bills: number
   paid_bills: number
   revenue_summary: number | string
+  total_appointment_count: number
+  total_completed_consultations: number
+  total_paid_bills: number
+  total_revenue_summary: number | string
 }
 
 export interface ManagerDoctorWorkload {
