@@ -475,10 +475,12 @@ class ManagerDepartmentSummary(BaseModel):
 
 class ManagerOverview(BaseModel):
     today_appointments: int
+    total_appointments: int
     total_patients: int
     active_doctors: int
     active_staff: int
     completed_consultations: int
+    total_completed_consultations: int
     pending_appointments: int
     operational_alerts: List[str]
     patient_flow: Dict[str, int]
@@ -506,6 +508,7 @@ class ManagerPatient(BaseModel):
     age: Optional[int] = None
     gender: Optional[GenderEnum] = None
     contact: Optional[str] = None
+    created_at: datetime
     appointment_count: int
     last_appointment_date: Optional[date] = None
     next_appointment_date: Optional[date] = None
@@ -538,6 +541,17 @@ class ManagerStaff(BaseModel):
     availability: str
 
 
+class ManagerBill(BaseModel):
+    id: int
+    appointment_id: int
+    patient_id: int
+    patient_name: str
+    amount: Decimal
+    status: Literal['pending', 'paid']
+    payment_method: Optional[PaymentMethodEnum] = None
+    paid_at: Optional[datetime] = None
+
+
 class DailyReport(BaseModel):
     date: date
     patient_count: int
@@ -547,6 +561,10 @@ class DailyReport(BaseModel):
     pending_bills: int
     paid_bills: int
     revenue_summary: Decimal
+    total_appointment_count: int
+    total_completed_consultations: int
+    total_paid_bills: int
+    total_revenue_summary: Decimal
 
 class DepartmentStats(BaseModel):
     department_id: int

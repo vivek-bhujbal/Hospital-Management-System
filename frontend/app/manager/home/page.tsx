@@ -8,11 +8,13 @@ export default async function ManagerDashboard() {
   const overview = await fetchAPI('/manager/overview') as ManagerOverview
   const metrics = [
     ['Today appointments', overview.today_appointments],
+    ['Total appointments', overview.total_appointments],
     ['Total patients', overview.total_patients],
     ['Active doctors', overview.active_doctors],
     ['Active staff', overview.active_staff],
-    ['Completed consultations', overview.completed_consultations],
-    ['Pending appointments', overview.pending_appointments],
+    ['Completed today', overview.completed_consultations],
+    ['Total completed', overview.total_completed_consultations],
+    ['Pending today', overview.pending_appointments],
   ] as const
 
   return (
@@ -30,7 +32,7 @@ export default async function ManagerDashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 xl:grid-cols-8">
         {metrics.map(([label, value]) => (
           <div key={label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <p className="text-sm font-medium text-slate-500">{label}</p>
