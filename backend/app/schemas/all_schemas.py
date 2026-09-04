@@ -122,6 +122,42 @@ class StaffAccountResponse(BaseModel):
     created_at: datetime
 
 
+class StaffAccountDetail(StaffAccountResponse):
+    is_email_verified: bool
+    email_verified_at: Optional[datetime] = None
+    last_login_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    profile: Optional[Dict[str, object]] = None
+
+
+class StaffRoleUpdate(BaseModel):
+    role: RoleEnum
+    specialization: Optional[str] = Field(default=None, max_length=100)
+    consultation_fee: Optional[Decimal] = Field(default=None, gt=0, decimal_places=2)
+    contact: Optional[str] = Field(default=None, max_length=20)
+    timing_start: Optional[time] = None
+    timing_end: Optional[time] = None
+    designation: Optional[str] = Field(default=None, max_length=100)
+    joining_date: Optional[date] = None
+    shift_start: Optional[time] = None
+    shift_end: Optional[time] = None
+
+    @model_validator(mode='after')
+    def validate_staff_role(self):
+        disallowed_roles = {UserRole.patient, UserRole.admin, UserRole.super_admin}
+        if self.role in disallowed_roles:
+            raise ValueError('Only staff roles can be assigned by a Hospital Admin')
+        if (self.timing_start is None) != (self.timing_end is None):
+            raise ValueError('Both doctor timing fields must be supplied together')
+        if self.timing_start and self.timing_end and self.timing_start >= self.timing_end:
+            raise ValueError('Doctor timing_start must be before timing_end')
+        if (self.shift_start is None) != (self.shift_end is None):
+            raise ValueError('Both receptionist shift fields must be supplied together')
+        if self.shift_start and self.shift_end and self.shift_start >= self.shift_end:
+            raise ValueError('Receptionist shift_start must be before shift_end')
+        return self
+
+
 class AdminPasswordReset(BaseModel):
     new_password: str
 

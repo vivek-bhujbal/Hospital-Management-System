@@ -14,6 +14,44 @@ export interface StaffActionResult {
   warning?: string
 }
 
+export interface StaffProfileDetails {
+  type: 'doctor' | 'receptionist'
+  id: number
+  specialization?: string | null
+  department_id?: number | null
+  consultation_fee?: string | number | null
+  contact?: string | null
+  timing_start?: string | null
+  timing_end?: string | null
+  designation?: string | null
+  joining_date?: string | null
+  shift_start?: string | null
+  shift_end?: string | null
+  status?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+  permissions?: Record<string, boolean> | null
+}
+
+export interface StaffAccountDetails {
+  id: number
+  name: string
+  email: string
+  role: string
+  is_active: boolean
+  is_email_verified: boolean
+  email_verified_at: string | null
+  last_login_at: string | null
+  created_at: string
+  updated_at: string | null
+  profile_id: number | null
+  profile: StaffProfileDetails | null
+}
+
+export interface StaffDetailsResult extends StaffActionResult {
+  account?: StaffAccountDetails
+}
+
 function headers(): Record<string, string> {
   const token = cookies().get('token')?.value
   return {
@@ -132,4 +170,43 @@ export async function setHospitalManagerActiveAction(
   }
   revalidatePath('/admin/staff')
   return { success: true }
+}
+
+export async function getStaffAccountAction(id: number): Promise<StaffDetailsResult> {
+  const response = await fetch(`${API_URL}/admin/staff/${id}`, {
+    method: 'GET',
+    headers: headers(),
+    cache: 'no-store',
+  })
+  if (response.status === 401) redirect('/login')
+  if (!response.ok) {
+    return { error: await errorDetail(response, 'Failed to load staff details') }
+  }
+  return { success: true, account: await response.json() as StaffAccountDetails }
+}
+
+export async function updateStaffRoleAction(formData: FormData): Promise<StaffDetailsResult> {
+  const id = optionalString(formData, 'id')
+  const response = await fetch(`${API_URL}/admin/staff/${id}/role`, {
+    method: 'PATCH',
+    headers: headers(),
+    body: JSON.stringify({
+      role: optionalString(formData, 'role'),
+      specialization: optionalString(formData, 'specialization'),
+      consultation_fee: optionalString(formData, 'consultation_fee'),
+      contact: optionalString(formData, 'contact'),
+      timing_start: optionalString(formData, 'timing_start'),
+      timing_end: optionalString(formData, 'timing_end'),
+      designation: optionalString(formData, 'designation'),
+      joining_date: optionalString(formData, 'joining_date'),
+      shift_start: optionalString(formData, 'shift_start'),
+      shift_end: optionalString(formData, 'shift_end'),
+    }),
+  })
+  if (response.status === 401) redirect('/login')
+  if (!response.ok) {
+    return { error: await errorDetail(response, 'Failed to update staff role') }
+  }
+  revalidatePath('/admin/staff')
+  return { success: true, account: await response.json() as StaffAccountDetails }
 }

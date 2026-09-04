@@ -200,6 +200,87 @@ def test_staff_email_must_be_unique(client, create_user, login):
     assert client.post("/admin/staff", json=payload, headers=auth).status_code == 409
 
 
+def test_admin_can_view_full_staff_details(client, create_user, login):
+    admin = create_user("admin")
+    receptionist = create_user(
+        "receptionist",
+        receptionist_permissions={
+            "can_register_patient": True,
+            "can_schedule_appointment": False,
+            "can_checkin_patient": True,
+            "can_collect_billing": False,
+        },
+    )
+
+    response = client.get(
+        f"/admin/staff/{receptionist.id}",
+        headers=headers(login(admin)),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["id"] == receptionist.id
+    assert payload["is_email_verified"] is True
+    assert payload["profile"]["type"] == "receptionist"
+    assert payload["profile"]["designation"] == "Receptionist"
+    assert payload["profile"]["permissions"] == {
+        "can_register_patient": True,
+        "can_schedule_appointment": False,
+        "can_checkin_patient": True,
+        "can_collect_billing": False,
+    }
+    assert "password_hash" not in payload
+
+
+def test_admin_can_change_staff_role_and_create_required_profile(
+    client, db, create_user, login
+):
+    admin = create_user("admin")
+    nurse = create_user("nurse")
+
+    response = client.patch(
+        f"/admin/staff/{nurse.id}/role",
+        json={
+            "role": "doctor",
+            "specialization": "Cardiology",
+            "consultation_fee": "850.00",
+            "contact": "555-0199",
+            "timing_start": "09:00:00",
+            "timing_end": "17:00:00",
+        },
+        headers=headers(login(admin)),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["role"] == "doctor"
+    assert response.json()["profile"]["specialization"] == "Cardiology"
+    db.refresh(nurse)
+    assert nurse.role == "doctor"
+    doctor = db.query(Doctor).filter(Doctor.user_id == nurse.id).one()
+    assert str(doctor.consultation_fee) == "850.00"
+    event = db.query(AuditLog).filter_by(action="staff.role.updated").one()
+    assert event.actor_user_id == admin.id
+    assert event.old_values == {"role": "nurse"}
+    assert event.new_values == {"role": "doctor"}
+
+
+def test_admin_role_change_is_limited_to_staff_roles(client, create_user, login):
+    admin = create_user("admin")
+    nurse = create_user("nurse")
+    auth = headers(login(admin))
+
+    assert client.patch(
+        f"/admin/staff/{nurse.id}/role",
+        json={"role": "admin"},
+        headers=auth,
+    ).status_code == 422
+    assert client.patch(
+        f"/admin/staff/{nurse.id}/role",
+        json={"role": "super_admin"},
+        headers=auth,
+    ).status_code == 422
+
+
 def test_inactivating_receptionist_blocks_login_and_revokes_session(
     client, db, create_user, login
 ):
