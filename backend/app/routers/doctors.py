@@ -1,13 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.all_models import (
-    Appointment, Doctor, User, PatientVital, LabOrder, LabOrderItem, LabResult,
+    Appointment, Doctor, Employee, User, PatientVital, LabOrder, LabOrderItem, LabResult,
     RadiologyOrder, RadiologyReport, RadiologyStudy, NursingTask, Patient,
 )
 from app.schemas.all_schemas import (
-    DoctorResponse, DoctorSelfUpdate, LabResultResponse, NursingTaskCreate,
-    NursingTaskResponse, RadiologyReportResponse,
+    DoctorResponse, DoctorSelfUpdate, LabResultResponse, NurseAssignmentOption,
+    NursingTaskCreate, NursingTaskResponse, RadiologyReportResponse,
 )
 from typing import List
 from app.core.deps import require_permission, require_role
@@ -93,6 +94,19 @@ def get_patient_radiology_reports(patient_id: int, db: Session = Depends(get_db)
     ).order_by(RadiologyReport.created_at.desc()).all()
 
 
+@router.get("/nurses", response_model=List[NurseAssignmentOption])
+def get_active_nurses(
+    db: Session = Depends(get_db),
+    _: User = Depends(allow_doctor_clinical),
+):
+    nurses = db.query(User).outerjoin(Employee, Employee.user_id == User.id).filter(
+        User.role == UserRole.nurse.value,
+        User.is_active.is_(True),
+        or_(Employee.id.is_(None), Employee.status == "active"),
+    ).order_by(User.name, User.id).all()
+    return [{"id": nurse.id, "name": nurse.name} for nurse in nurses]
+
+
 @router.post("/nursing-tasks", response_model=NursingTaskResponse, status_code=201)
 def assign_nursing_task(
     task: NursingTaskCreate,
@@ -100,7 +114,7 @@ def assign_nursing_task(
     db: Session = Depends(get_db),
     current_user: User = Depends(allow_doctor_clinical),
 ):
-    _require_assigned_patient(db, current_user, task.patient_id)
+    doctor = _require_assigned_patient(db, current_user, task.patient_id)
     patient = db.get(Patient, task.patient_id)
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
@@ -111,13 +125,22 @@ def assign_nursing_task(
     ).first()
     if not nurse:
         raise HTTPException(status_code=400, detail="Assigned nurse is invalid or inactive")
-    item = NursingTask(**task.model_dump(exclude={"status"}), status="pending")
+    item = NursingTask(
+        **task.model_dump(exclude={"status"}),
+        created_by_doctor_id=doctor.id,
+        status="pending",
+    )
     db.add(item)
     db.flush()
     record_audit_event(
         db, actor=current_user, action="nursing_task.assigned",
         resource_type="nursing_task", resource_id=str(item.id),
-        new_values=task.model_dump(), **request_audit_metadata(request),
+        new_values={
+            **task.model_dump(),
+            "created_by_doctor_id": doctor.id,
+            "status": "pending",
+        },
+        **request_audit_metadata(request),
     )
     db.commit()
     db.refresh(item)

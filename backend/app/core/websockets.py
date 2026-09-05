@@ -2,8 +2,8 @@
 Centralized WebSocket Connection Manager.
 
 Design decisions:
-- Connections are authenticated via JWT token passed as a query parameter
-  during the handshake (no Bearer header support on most WS clients).
+- Connections support the Bearer WebSocket subprotocol; the notification UI
+  uses a short-lived, notification-only JWT instead of exposing the login JWT.
 - Disconnected clients are silently removed from the registry.
 - Topics isolate connection groups: each role / module that needs real-time
   events subscribes to a topic (e.g. "emergency_dispatch", "queue").
@@ -66,7 +66,7 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
-def get_ws_user_id(token: str) -> int:
+def get_ws_user_id(token: str, required_scope: str | None = None) -> int:
     """
     Decode a JWT token and return the user ID.
     Raises ValueError if the token is invalid or missing.
@@ -77,6 +77,11 @@ def get_ws_user_id(token: str) -> int:
 
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        token_scope = payload.get("scope")
+        if required_scope and token_scope != required_scope:
+            raise ValueError("Token has an invalid WebSocket scope")
+        if not required_scope and token_scope:
+            raise ValueError("Scoped token cannot access this WebSocket topic")
         user_id = payload.get("sub")
         if user_id is None:
             raise ValueError("Token missing 'sub' claim")

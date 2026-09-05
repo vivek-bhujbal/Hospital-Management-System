@@ -10,6 +10,7 @@ interface Props {
   patients: NursePatient[]
   appointments: NurseAppointment[]
   vitals: NurseVital[]
+  initialPatientId?: string
 }
 
 const MEASUREMENTS = [
@@ -23,9 +24,12 @@ const MEASUREMENTS = [
   ['height', 'Height (cm)', 'number', '0.1'],
 ] as const
 
-export default function VitalsWorkspace({ patients, appointments, vitals }: Props) {
+export default function VitalsWorkspace({ patients, appointments, vitals, initialPatientId }: Props) {
   const formRef = useRef<HTMLFormElement>(null)
-  const [patientId, setPatientId] = useState(patients[0] ? String(patients[0].id) : '')
+  const availableInitialPatientId = patients.some((patient) => String(patient.id) === initialPatientId)
+    ? initialPatientId || ''
+    : patients[0] ? String(patients[0].id) : ''
+  const [patientId, setPatientId] = useState(availableInitialPatientId)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const patientAppointments = useMemo(

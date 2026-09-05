@@ -55,6 +55,50 @@ export interface DoctorPatientHistory {
   patient: DoctorPatient
   appointments: DoctorAppointment[]
   prescriptions: DoctorPrescription[]
+  nursing_tasks: Array<{
+    id: number
+    assigned_nurse_id: number | null
+    nurse_name: string
+    created_by_doctor_id: number | null
+    doctor_name: string
+    task_type: string
+    description: string
+    priority: 'low' | 'medium' | 'high' | 'emergency'
+    status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
+    due_at: string | null
+    completed_at: string | null
+    created_at: string
+    updated_at: string | null
+  }>
+  vitals: Array<{
+    id: number
+    appointment_id: number | null
+    temperature: string | number | null
+    blood_pressure_systolic: number | null
+    blood_pressure_diastolic: number | null
+    pulse: number | null
+    respiratory_rate: number | null
+    oxygen_saturation: string | number | null
+    weight: string | number | null
+    height: string | number | null
+    notes: string | null
+    recorded_by: number
+    recorded_by_name: string
+    recorded_at: string
+  }>
+  nursing_notes: Array<{
+    id: number
+    appointment_id: number | null
+    note: string
+    nurse_id: number
+    nurse_name: string
+    created_at: string
+  }>
+}
+
+export interface DoctorNurseOption {
+  id: number
+  name: string
 }
 
 export function localDateValue(value: Date = new Date()): string {
@@ -66,7 +110,7 @@ export function shortTime(value: string): string {
   return value.slice(0, 5)
 }
 
-export function statusLabel(status: DoctorAppointmentStatus): string {
+export function statusLabel(status: string): string {
   return status.replaceAll('_', ' ')
 }
 

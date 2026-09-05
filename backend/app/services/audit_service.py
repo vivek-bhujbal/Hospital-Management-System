@@ -59,6 +59,19 @@ def record_audit_event(
         user_agent=user_agent[:255] if user_agent else None,
     )
     db.add(event)
+    # Workflow notifications share the caller's transaction, so users never
+    # receive an update for a mutation that later rolls back.
+    from app.services.notification_service import create_notifications_for_audit_event
+
+    create_notifications_for_audit_event(
+        db,
+        actor=actor,
+        action=action,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        old_values=old_values,
+        new_values=new_values,
+    )
     return event
 
 

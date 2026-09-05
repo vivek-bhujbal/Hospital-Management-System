@@ -15,10 +15,10 @@ from app.core.deps import PermissionChecker, require_any_role, require_permissio
 from app.core.permissions import Permission
 from app.core.security import get_password_hash
 from app.database import Base, get_db
-from app.models.all_models import Employee, EmployeePermission, User
+from app.models.all_models import Doctor, Employee, EmployeePermission, User
 from app.routers import (
     accountant, admin, ambulance, appointments, auth, billing, doctors, employees, insurance,
-    lab, manager, nurse, patients, pharmacy, prescriptions, radiology, rbac, super_admin,
+    lab, manager, nurse, patients, pharmacy, prescriptions, radiology, rbac, realtime, super_admin,
 )
 
 
@@ -45,6 +45,7 @@ test_app.include_router(patients.router, prefix="/patients")
 test_app.include_router(admin.router, prefix="/admin")
 test_app.include_router(employees.router, prefix="/admin/employees")
 test_app.include_router(rbac.router, prefix="/rbac")
+test_app.include_router(realtime.router)
 test_app.include_router(appointments.router, prefix="/appointments")
 test_app.include_router(prescriptions.router, prefix="/prescriptions")
 test_app.include_router(billing.router, prefix="/billing")
@@ -165,6 +166,19 @@ def create_user(db: Session) -> Callable[..., User]:
 @pytest.fixture
 def login(client: TestClient) -> Callable[[User, str], str]:
     def factory(user: User, password: str = "Strong1!Password") -> str:
+        if user.role == "doctor":
+            db = TestingSessionLocal()
+            try:
+                if not db.query(Doctor.id).filter(Doctor.user_id == user.id).scalar():
+                    db.add(Doctor(
+                        user_id=user.id,
+                        name=user.name,
+                        specialization="General Medicine",
+                        status="active",
+                    ))
+                    db.commit()
+            finally:
+                db.close()
         response = client.post(
             "/auth/login",
             json={"email": user.email, "password": password},

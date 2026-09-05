@@ -85,6 +85,7 @@ class Employee(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey('users.id'), unique=True, nullable=False)
     designation = Column(String(100), nullable=False)
+    contact = Column(String(20))
     joining_date = Column(Date)
     shift_start = Column(Time)
     shift_end = Column(Time)
@@ -270,6 +271,7 @@ class NursingTask(Base):
     __tablename__ = 'nursing_tasks'
     id = Column(Integer, primary_key=True, index=True)
     patient_id = Column(Integer, ForeignKey('patients.id'), nullable=False)
+    created_by_doctor_id = Column(Integer, ForeignKey('doctors.id'), nullable=True)
     assigned_nurse_id = Column(Integer, ForeignKey('users.id'), nullable=True)
     task_type = Column(String(100))
     description = Column(Text)

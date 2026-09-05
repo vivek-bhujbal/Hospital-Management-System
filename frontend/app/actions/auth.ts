@@ -41,41 +41,32 @@ export async function loginAction(_prevState: AuthActionState | null, formData: 
     }
 
     const data = await res.json() as LoginResponse
-    
-    // Set HttpOnly cookie
-    cookies().set('token', data.access_token, {
+    const cookieOptions = {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      sameSite: 'lax' as const,
       path: '/',
-      maxAge: data.expires_in
+      ...(data.expires_in > 0 ? { maxAge: data.expires_in } : {}),
+    }
+
+    // A zero backend lifetime intentionally creates a browser-session cookie.
+    cookies().set('token', data.access_token, {
+      ...cookieOptions,
     })
     
     if (data.permissions) {
       cookies().set('employee_permissions', JSON.stringify(data.permissions), {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        maxAge: data.expires_in
+        ...cookieOptions,
       })
     } else {
       cookies().delete('employee_permissions')
     }
 
     cookies().set('user_permissions', JSON.stringify(data.effective_permissions || []), {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: data.expires_in
+      ...cookieOptions,
     })
     cookies().set('user_role', data.role, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: data.expires_in
+      ...cookieOptions,
     })
 
     return { redirectUrl: roleHome(data.role) }

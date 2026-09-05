@@ -67,6 +67,31 @@ def test_fresh_migration_removes_unused_receptionist_report_permission(tmp_path)
         assert "can_view_reports" not in permission_columns
 
 
+def test_nursing_task_creator_migration_adds_nullable_doctor_reference(tmp_path):
+    database_path = tmp_path / "nursing-task-creator.db"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    previous_url = settings.DATABASE_URL
+    settings.DATABASE_URL = database_url
+    try:
+        command.upgrade(_config(database_url), "head")
+    finally:
+        settings.DATABASE_URL = previous_url
+
+    engine = create_engine(database_url)
+    with engine.connect() as connection:
+        inspector = inspect(connection)
+        columns = {
+            column["name"]: column
+            for column in inspector.get_columns("nursing_tasks")
+        }
+        assert columns["created_by_doctor_id"]["nullable"] is True
+        assert any(
+            foreign_key.get("constrained_columns") == ["created_by_doctor_id"]
+            and foreign_key.get("referred_table") == "doctors"
+            for foreign_key in inspector.get_foreign_keys("nursing_tasks")
+        )
+
+
 def test_migration_refuses_to_drop_populated_unmanaged_enterprise_table(tmp_path):
     database_path = tmp_path / "populated-enterprise.db"
     database_url = f"sqlite:///{database_path.as_posix()}"

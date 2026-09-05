@@ -52,6 +52,7 @@ const MANAGER_ROUTES: ReadonlySet<string> = new Set([
 const NURSE_ROUTES: ReadonlySet<string> = new Set([
   '/nurse/home',
   '/nurse/patients',
+  '/nurse/history',
   '/nurse/appointments',
   '/nurse/vitals',
   '/nurse/tasks',
@@ -118,7 +119,9 @@ function isAdminRoute(pathname: string): boolean {
 }
 
 function isNurseRoute(pathname: string): boolean {
-  return NURSE_ROUTES.has(pathname) || /^\/nurse\/patient\/\d+$/.test(pathname)
+  return NURSE_ROUTES.has(pathname)
+    || /^\/nurse\/patient\/\d+$/.test(pathname)
+    || /^\/nurse\/history\/\d+$/.test(pathname)
 }
 
 function isPharmacistRoute(pathname: string): boolean {

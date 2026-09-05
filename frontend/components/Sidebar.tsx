@@ -8,7 +8,7 @@ import {
   ChevronRight, ClipboardCheck, ClipboardList, CreditCard, FileCheck2, FileHeart,
   FileText, FlaskConical, HeartPulse, Hospital, LayoutDashboard, LogOut, Microscope,
   PackageSearch, Pill, ReceiptIndianRupee, Settings, ShieldCheck, ShieldPlus,
-  Stethoscope, TestTube2, UserCog, UserPlus, Users, WalletCards, X,
+  History, Stethoscope, TestTube2, UserCog, UserPlus, Users, WalletCards, X,
 } from 'lucide-react'
 
 import { logoutAction } from '@/app/actions/auth'
@@ -80,6 +80,7 @@ const MENU_ITEMS: Record<UserRole, readonly MenuItem[]> = {
   nurse: [
     { name: 'Nursing overview', path: '/nurse/home', icon: LayoutDashboard, group: 'Overview' },
     { name: 'Assigned patients', path: '/nurse/patients', icon: Bed, permission: PERMISSIONS.NURSING_VIEW, group: 'Care workspace' },
+    { name: 'Patient history', path: '/nurse/history', icon: History, permission: PERMISSIONS.NURSING_VIEW, group: 'Care workspace' },
     { name: 'Appointments', path: '/nurse/appointments', icon: CalendarDays, permission: PERMISSIONS.NURSING_VIEW, group: 'Care workspace' },
     { name: 'Record vitals', path: '/nurse/vitals', icon: HeartPulse, permission: PERMISSIONS.NURSING_RECORD_VITALS, group: 'Care workspace' },
     { name: 'Nursing tasks', path: '/nurse/tasks', icon: ClipboardCheck, permission: PERMISSIONS.NURSING_MANAGE_TASKS, group: 'Operations' },

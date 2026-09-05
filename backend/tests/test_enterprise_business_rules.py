@@ -7,6 +7,7 @@ from app.models.all_models import (
     Appointment,
     Billing,
     Doctor,
+    Notification,
     NursingTask,
     Patient,
     PatientVital,
@@ -67,6 +68,7 @@ def test_appointment_booking_rejects_doctor_slot_collision(
 ):
     patient_user = create_user("patient")
     doctor_user = create_user("doctor")
+    receptionist = create_user("receptionist")
     patient = Patient(user_id=patient_user.id, name="Patient One")
     doctor = Doctor(
         user_id=doctor_user.id,
@@ -87,7 +89,19 @@ def test_appointment_booking_rejects_doctor_slot_collision(
     }
     auth = headers(login(patient_user))
 
-    assert client.post("/appointments/", json=payload, headers=auth).status_code == 201
+    created = client.post("/appointments/", json=payload, headers=auth)
+    assert created.status_code == 201
+    appointment_id = created.json()["id"]
+    notifications = db.query(Notification).filter(
+        Notification.entity_type == "appointment",
+        Notification.entity_id == appointment_id,
+    ).all()
+    assert {item.user_id for item in notifications} == {
+        patient_user.id,
+        doctor_user.id,
+        receptionist.id,
+    }
+    assert all(item.status == "sent" for item in notifications)
     collision = client.post("/appointments/", json=payload, headers=auth)
     assert collision.status_code == 409
 

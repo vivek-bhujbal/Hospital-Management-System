@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.all_models import (
     Patient, User, Appointment, Prescription, PatientVital, Doctor,
+    NursingNote, NursingTask,
     LabOrder, LabResult, RadiologyOrder, RadiologyReport,
     Dispensing, Billing, InsuranceClaim
 )
@@ -95,11 +96,84 @@ def get_patient_history(id: int, db: Session = Depends(get_db), current_user: Us
     appts = db.query(Appointment).filter(Appointment.patient_id == id).order_by(Appointment.appt_date.desc()).all()
     appt_ids = [a.id for a in appts]
     pres = db.query(Prescription).filter(Prescription.appointment_id.in_(appt_ids)).order_by(Prescription.created_at.desc()).all() if appt_ids else []
-    
+    nursing_tasks = db.query(NursingTask).filter(
+        NursingTask.patient_id == id,
+    ).order_by(NursingTask.created_at.desc()).all()
+    vitals = db.query(PatientVital).filter(
+        PatientVital.patient_id == id,
+    ).order_by(PatientVital.recorded_at.desc()).all()
+    nursing_notes = db.query(NursingNote).filter(
+        NursingNote.patient_id == id,
+    ).order_by(NursingNote.created_at.desc()).all()
+    nurse_ids = {
+        nurse_id for nurse_id in (
+            *[task.assigned_nurse_id for task in nursing_tasks],
+            *[vital.recorded_by for vital in vitals],
+            *[note.nurse_id for note in nursing_notes],
+        ) if nurse_id is not None
+    }
+    nurses = {
+        user.id: user.name
+        for user in db.query(User).filter(User.id.in_(nurse_ids)).all()
+    } if nurse_ids else {}
+    creator_ids = {task.created_by_doctor_id for task in nursing_tasks if task.created_by_doctor_id}
+    creators = {
+        doctor.id: doctor.name
+        for doctor in db.query(Doctor).filter(Doctor.id.in_(creator_ids)).all()
+    } if creator_ids else {}
+
     return {
         "patient": patient,
         "appointments": appts,
-        "prescriptions": pres
+        "prescriptions": pres,
+        "nursing_tasks": [
+            {
+                "id": task.id,
+                "assigned_nurse_id": task.assigned_nurse_id,
+                "nurse_name": nurses.get(task.assigned_nurse_id, "Unassigned"),
+                "created_by_doctor_id": task.created_by_doctor_id,
+                "doctor_name": creators.get(task.created_by_doctor_id, "Legacy task"),
+                "task_type": task.task_type,
+                "description": task.description,
+                "priority": task.priority,
+                "status": task.status,
+                "due_at": task.due_at,
+                "completed_at": task.completed_at,
+                "created_at": task.created_at,
+                "updated_at": task.updated_at,
+            }
+            for task in nursing_tasks
+        ],
+        "vitals": [
+            {
+                "id": vital.id,
+                "appointment_id": vital.appointment_id,
+                "temperature": vital.temperature,
+                "blood_pressure_systolic": vital.blood_pressure_systolic,
+                "blood_pressure_diastolic": vital.blood_pressure_diastolic,
+                "pulse": vital.pulse,
+                "respiratory_rate": vital.respiratory_rate,
+                "oxygen_saturation": vital.oxygen_saturation,
+                "weight": vital.weight,
+                "height": vital.height,
+                "notes": vital.notes,
+                "recorded_by": vital.recorded_by,
+                "recorded_by_name": nurses.get(vital.recorded_by, "Unknown user"),
+                "recorded_at": vital.recorded_at,
+            }
+            for vital in vitals
+        ],
+        "nursing_notes": [
+            {
+                "id": note.id,
+                "appointment_id": note.appointment_id,
+                "note": note.note,
+                "nurse_id": note.nurse_id,
+                "nurse_name": nurses.get(note.nurse_id, "Unknown nurse"),
+                "created_at": note.created_at,
+            }
+            for note in nursing_notes
+        ],
     }
 
 @router.get("/", response_model=List[PatientResponse])

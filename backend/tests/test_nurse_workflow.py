@@ -4,9 +4,11 @@ from app.core.permissions import Permission, get_role_permissions
 from app.models.all_models import (
     Appointment,
     AuditLog,
+    Department,
     Doctor,
     NursingNote,
     NursingTask,
+    Notification,
     Patient,
     PatientVital,
     Prescription,
@@ -21,7 +23,15 @@ def seed_nursing_care(db, create_user):
     nurse = create_user("nurse", email="primary-nurse@example.com")
     other_nurse = create_user("nurse", email="other-nurse@example.com")
     doctor_user = create_user("doctor", email="nurse-workflow-doctor@example.com")
-    doctor = Doctor(user_id=doctor_user.id, name="Care Doctor", status="active")
+    department = Department(name="Nursing Test Department", status="active")
+    db.add(department)
+    db.flush()
+    doctor = Doctor(
+        user_id=doctor_user.id,
+        name="Care Doctor",
+        status="active",
+        department_id=department.department_id,
+    )
     assigned = Patient(name="Assigned Patient", age=41, blood_group="O+")
     unassigned = Patient(name="Unassigned Patient", age=29)
     other_assigned = Patient(name="Other Nurse Patient", age=35)
@@ -48,6 +58,7 @@ def seed_nursing_care(db, create_user):
     assigned_task = NursingTask(
         patient_id=assigned.id,
         assigned_nurse_id=nurse.id,
+        created_by_doctor_id=doctor.id,
         task_type="Record vitals",
         description="Record observations before consultation",
         priority="emergency",
@@ -57,6 +68,7 @@ def seed_nursing_care(db, create_user):
     other_task = NursingTask(
         patient_id=other_assigned.id,
         assigned_nurse_id=other_nurse.id,
+        created_by_doctor_id=doctor.id,
         task_type="Monitor",
         description="Monitor patient",
         priority="medium",
@@ -153,19 +165,28 @@ def test_dashboard_patients_appointments_and_detail_are_assignment_scoped(
     detail = client.get(f"/nurse/patients/{records['assigned'].id}", headers=auth)
 
     assert dashboard.status_code == 200
+    assert dashboard.json()["today_assigned_patients"] == 1
     assert dashboard.json()["waiting_patients"] == 1
     assert dashboard.json()["patients_requiring_vitals"] == 1
+    assert dashboard.json()["patients_requiring_tasks"] == 1
+    assert dashboard.json()["active_tasks"] == 1
     assert dashboard.json()["urgent_alerts"][0]["patient_id"] == records["assigned"].id
     assert patients.status_code == 200
     assert [item["id"] for item in patients.json()] == [records["assigned"].id]
+    assert patients.json()[0]["assigned_doctor_name"] == "Care Doctor"
+    assert patients.json()[0]["highest_task_priority"] == "emergency"
+    assert patients.json()[0]["latest_pulse"] == 76
     assert appointments.status_code == 200
     assert [item["patient_id"] for item in appointments.json()] == [records["assigned"].id]
+    assert appointments.json()[0]["department_name"] == "Nursing Test Department"
     assert detail.status_code == 200
     assert detail.json()["patient"]["blood_group"] == "O+"
+    assert detail.json()["appointments"][0]["department_name"] == "Nursing Test Department"
     assert "address" not in detail.json()["patient"]
     assert detail.json()["prescriptions"][0]["diagnosis"] == "Read-only diagnosis"
     assert detail.json()["vitals"][0]["pulse"] == 76
     assert detail.json()["nursing_notes"][0]["note"] == "Existing observation"
+    assert detail.json()["tasks"][0]["doctor_name"] == "Care Doctor"
     assert client.get(
         f"/nurse/patients/{records['unassigned'].id}", headers=auth,
     ).status_code == 403
@@ -298,7 +319,16 @@ def test_doctor_assigns_nursing_task_only_for_own_patient(
     assert created.status_code == 201
     assert created.json()["status"] == "pending"
     assert created.json()["assigned_nurse_id"] == records["nurse"].id
+    assert created.json()["created_by_doctor_id"] == records["doctor"].id
+    assert db.get(NursingTask, created.json()["id"]).created_by_doctor_id == records["doctor"].id
     assert db.query(AuditLog).filter_by(action="nursing_task.assigned").count() == 1
+    nurse_notification = db.query(Notification).filter_by(
+        user_id=records["nurse"].id,
+        type="nursing_task.assigned",
+        entity_id=created.json()["id"],
+    ).one()
+    assert nurse_notification.status == "sent"
+    assert "Medication observation" in nurse_notification.body
 
     foreign_payload = payload | {"patient_id": records["other_assigned"].id}
     assert client.post(
@@ -310,3 +340,129 @@ def test_doctor_assigns_nursing_task_only_for_own_patient(
         headers=headers(login(records["nurse"])),
     ).status_code == 403
     assert client.post("/nurse/tasks", json=payload, headers=headers(login(records["nurse"]))).status_code == 405
+
+
+def test_complete_doctor_to_nurse_assignment_journey_and_access_revocation(
+    client, db, create_user, login
+):
+    records = seed_nursing_care(db, create_user)
+    inactive_nurse = create_user(
+        "nurse", email="inactive-nurse@example.com", is_active=False,
+    )
+    doctor_auth = headers(login(records["doctor_user"]))
+    nurse_auth = headers(login(records["nurse"]))
+    other_nurse_auth = headers(login(records["other_nurse"]))
+
+    nurse_options = client.get("/doctors/nurses", headers=doctor_auth)
+    assert nurse_options.status_code == 200
+    option_ids = {item["id"] for item in nurse_options.json()}
+    assert records["nurse"].id in option_ids
+    assert records["other_nurse"].id in option_ids
+    assert inactive_nurse.id not in option_ids
+
+    patient_id = records["unassigned"].id
+    previous_vital = PatientVital(
+        patient_id=patient_id,
+        appointment_id=records["unassigned_appointment"].id,
+        recorded_by=records["other_nurse"].id,
+        pulse=70,
+    )
+    db.add(previous_vital)
+    db.commit()
+    created = client.post(
+        "/doctors/nursing-tasks",
+        json={
+            "patient_id": patient_id,
+            "assigned_nurse_id": records["nurse"].id,
+            "task_type": "Post-consultation observation",
+            "description": "Record vitals and add a nursing observation.",
+            "priority": "high",
+            "due_at": (datetime.now() + timedelta(hours=2)).isoformat(),
+        },
+        headers=doctor_auth,
+    )
+    assert created.status_code == 201
+    task_id = created.json()["id"]
+
+    assert client.get(f"/nurse/patients/{patient_id}", headers=nurse_auth).status_code == 200
+    assert client.get(f"/nurse/patients/{patient_id}", headers=other_nurse_auth).status_code == 403
+    assert patient_id in {
+        item["id"] for item in client.get("/nurse/patients", headers=nurse_auth).json()
+    }
+    assert patient_id in {
+        item["patient_id"]
+        for item in client.get("/nurse/appointments", headers=nurse_auth).json()
+    }
+    assert task_id not in {
+        item["id"] for item in client.get("/nurse/tasks", headers=other_nurse_auth).json()
+    }
+    assert client.get("/nurse/dashboard", headers=nurse_auth).json()["active_tasks"] == 2
+
+    vital = client.post(
+        "/nurse/vitals",
+        json={
+            "patient_id": patient_id,
+            "appointment_id": records["unassigned_appointment"].id,
+            "temperature": "37.1",
+            "pulse": 74,
+        },
+        headers=nurse_auth,
+    )
+    assert vital.status_code == 201
+    vital_history = client.get(f"/nurse/vitals/patient/{patient_id}", headers=nurse_auth)
+    assert vital_history.status_code == 200
+    assert {item["pulse"] for item in vital_history.json()} == {70, 74}
+    note = client.post(
+        "/nurse/notes",
+        json={
+            "patient_id": patient_id,
+            "appointment_id": records["unassigned_appointment"].id,
+            "note": "Patient stable during observation.",
+        },
+        headers=nurse_auth,
+    )
+    assert note.status_code == 201
+
+    assert client.put(
+        f"/nurse/tasks/{task_id}", json={"status": "in_progress"}, headers=nurse_auth,
+    ).status_code == 200
+    completed = client.put(
+        f"/nurse/tasks/{task_id}", json={"status": "completed"}, headers=nurse_auth,
+    )
+    assert completed.status_code == 200
+
+    history = client.get("/nurse/tasks", headers=nurse_auth)
+    completed_task = next(item for item in history.json() if item["id"] == task_id)
+    assert completed_task["status"] == "completed"
+    assert completed_task["doctor_name"] == "Care Doctor"
+    assert completed_task["patient_access_active"] is False
+    assert client.get("/nurse/dashboard", headers=nurse_auth).json()["active_tasks"] == 1
+    assert client.get(f"/nurse/patients/{patient_id}", headers=nurse_auth).status_code == 403
+
+    history_index = client.get("/nurse/history", headers=nurse_auth)
+    assert history_index.status_code == 200
+    patient_summary = next(
+        item for item in history_index.json() if item["patient_id"] == patient_id
+    )
+    assert patient_summary["task_count"] == 1
+    assert patient_summary["completed_task_count"] == 1
+    assert patient_summary["active_task_count"] == 0
+    assert patient_summary["vital_count"] == 1
+    assert patient_summary["note_count"] == 1
+
+    work_history = client.get(f"/nurse/history/{patient_id}", headers=nurse_auth)
+    assert work_history.status_code == 200
+    assert [item["id"] for item in work_history.json()["tasks"]] == [task_id]
+    assert [item["pulse"] for item in work_history.json()["vitals"]] == [74]
+    assert [item["note"] for item in work_history.json()["nursing_notes"]] == [
+        "Patient stable during observation."
+    ]
+    assert client.get(
+        f"/nurse/history/{patient_id}", headers=other_nurse_auth,
+    ).status_code == 403
+
+    doctor_history = client.get(f"/patients/{patient_id}/history", headers=doctor_auth)
+    assert doctor_history.status_code == 200
+    assert doctor_history.json()["nursing_tasks"][0]["nurse_name"] == records["nurse"].name
+    assert {item["pulse"] for item in doctor_history.json()["vitals"]} == {70, 74}
+    assert doctor_history.json()["nursing_notes"][0]["nurse_name"] == records["nurse"].name

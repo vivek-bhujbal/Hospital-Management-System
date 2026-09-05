@@ -29,11 +29,24 @@ export async function fetchAPI(endpoint: string, options: RequestInit = {}) {
   });
 
   if (!res.ok) {
-    if (res.status === 401 || (endpoint === '/auth/me' && res.status === 403)) {
+    const errorBody = await res.text();
+    let detail = ''
+    try {
+      const payload = JSON.parse(errorBody) as { detail?: unknown }
+      if (typeof payload.detail === 'string') detail = payload.detail
+    } catch {
+      // Preserve non-JSON error bodies in the APIError below.
+    }
+    if (
+      res.status === 401
+      || (res.status === 403 && (
+        endpoint === '/auth/me'
+        || detail === 'Your account has been disabled.'
+      ))
+    ) {
       const { redirect } = await import('next/navigation');
       redirect('/session-expired');
     }
-    const errorBody = await res.text();
     throw new APIError(res.status, `API Request Failed: ${res.status} ${errorBody}`);
   }
   return res.json();

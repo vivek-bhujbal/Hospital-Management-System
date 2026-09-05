@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database import get_db
 from app.models.all_models import Doctor, Patient, Appointment, Billing, User, HospitalSetting, Employee, EmployeePermission
-from app.schemas.all_schemas import DoctorResponse, DoctorCreate, PatientResponse, AppointmentResponse, HospitalSettingResponse, DoctorCreateWithAuth, DoctorPasswordReset, StaffAccountCreate, StaffAccountDetail, StaffAccountResponse, StaffRoleUpdate
+from app.schemas.all_schemas import DoctorResponse, DoctorCreate, PatientResponse, AppointmentResponse, HospitalSettingResponse, DoctorCreateWithAuth, DoctorPasswordReset, StaffAccountCreate, StaffAccountDetail, StaffAccountResponse, StaffRoleUpdate, StaffShiftUpdate
 from typing import List
 from datetime import date, datetime, timezone
 from app.core.deps import require_permission, require_role
@@ -43,7 +43,7 @@ def _staff_response(db: Session, user: User) -> dict:
     profile_id = None
     if user.role == UserRole.doctor.value:
         profile_id = db.query(Doctor.id).filter(Doctor.user_id == user.id).scalar()
-    elif user.role == UserRole.receptionist.value:
+    else:
         profile_id = db.query(Employee.id).filter(Employee.user_id == user.id).scalar()
     return {
         "id": user.id,
@@ -76,16 +76,19 @@ def _staff_detail_response(db: Session, user: User) -> dict:
             "created_at": doctor.created_at,
             "updated_at": doctor.updated_at,
         }
-    elif user.role == UserRole.receptionist.value and employee:
-        permissions = (
-            db.query(EmployeePermission)
-            .filter(EmployeePermission.employee_id == employee.id)
-            .first()
-        )
+    elif employee:
+        permissions = None
+        if user.role == UserRole.receptionist.value:
+            permissions = (
+                db.query(EmployeePermission)
+                .filter(EmployeePermission.employee_id == employee.id)
+                .first()
+            )
         profile = {
-            "type": "receptionist",
+            "type": "receptionist" if user.role == UserRole.receptionist.value else "employee",
             "id": employee.id,
             "designation": employee.designation,
+            "contact": employee.contact,
             "joining_date": employee.joining_date,
             "shift_start": employee.shift_start,
             "shift_end": employee.shift_end,
@@ -147,7 +150,14 @@ def get_staff_accounts(
     _: User = Depends(allow_staff_view),
 ):
     users = db.query(User).filter(User.role.in_(STAFF_ACCOUNT_ROLES)).order_by(User.name).all()
-    return [_staff_response(db, user) for user in users]
+    doctor_user_ids = {
+        user_id for (user_id,) in db.query(Doctor.user_id).filter(Doctor.user_id.isnot(None)).all()
+    }
+    return [
+        _staff_response(db, user)
+        for user in users
+        if user.role != UserRole.doctor.value or user.id in doctor_user_ids
+    ]
 
 
 @router.get("/staff/{staff_id}", response_model=StaffAccountDetail)
@@ -162,6 +172,78 @@ def get_staff_account(
     ).first()
     if not user:
         raise HTTPException(status_code=404, detail="Staff account not found")
+    if user.role == UserRole.doctor.value and not db.query(Doctor.id).filter(Doctor.user_id == user.id).scalar():
+        raise HTTPException(status_code=404, detail="Staff account not found")
+    return _staff_detail_response(db, user)
+
+
+@router.patch("/staff/{staff_id}/shift", response_model=StaffAccountDetail)
+def update_staff_shift(
+    staff_id: int,
+    shift_update: StaffShiftUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(Permission.staff_update)),
+):
+    user = db.query(User).filter(
+        User.id == staff_id,
+        User.role.in_(STAFF_ACCOUNT_ROLES),
+    ).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Staff account not found")
+
+    if user.role == UserRole.doctor.value:
+        profile = db.query(Doctor).filter(Doctor.user_id == user.id).first()
+        if not profile:
+            raise HTTPException(status_code=404, detail="Doctor profile not found")
+        if shift_update.shift_start >= shift_update.shift_end:
+            raise HTTPException(
+                status_code=422,
+                detail="Doctor shift start must be before shift end",
+            )
+        old_values = {
+            "shift_start": str(profile.timing_start) if profile.timing_start else None,
+            "shift_end": str(profile.timing_end) if profile.timing_end else None,
+        }
+        profile.timing_start = shift_update.shift_start
+        profile.timing_end = shift_update.shift_end
+    else:
+        profile = db.query(Employee).filter(Employee.user_id == user.id).first()
+        if not profile:
+            profile = Employee(
+                user_id=user.id,
+                designation=user.role.replace("_", " ").title(),
+                contact=None,
+                status="active",
+                added_by=current_user.id,
+            )
+            db.add(profile)
+            db.flush()
+            if user.role == UserRole.receptionist.value:
+                db.add(EmployeePermission(employee_id=profile.id))
+        old_values = {
+            "shift_start": str(profile.shift_start) if profile.shift_start else None,
+            "shift_end": str(profile.shift_end) if profile.shift_end else None,
+        }
+        profile.shift_start = shift_update.shift_start
+        profile.shift_end = shift_update.shift_end
+
+    new_values = {
+        "shift_start": str(shift_update.shift_start),
+        "shift_end": str(shift_update.shift_end),
+    }
+    record_audit_event(
+        db,
+        actor=current_user,
+        action="staff.shift.updated",
+        resource_type="user",
+        resource_id=str(user.id),
+        old_values=old_values,
+        new_values=new_values,
+        **request_audit_metadata(request),
+    )
+    db.commit()
+    db.refresh(user)
     return _staff_detail_response(db, user)
 
 
@@ -216,16 +298,16 @@ def update_staff_role(
                 if value is not None:
                     setattr(doctor, field, value)
 
-    if new_role == UserRole.receptionist.value:
-        if not employee and not role_update.designation:
-            raise HTTPException(
-                status_code=422,
-                detail="A designation is required when assigning the Receptionist role",
-            )
+    if new_role != UserRole.doctor.value:
+        designation = (
+            role_update.designation or "Receptionist"
+            if new_role == UserRole.receptionist.value
+            else new_role.replace("_", " ").title()
+        )
         if not employee:
             employee = Employee(
                 user_id=user.id,
-                designation=role_update.designation,
+                designation=designation,
                 joining_date=role_update.joining_date,
                 shift_start=role_update.shift_start,
                 shift_end=role_update.shift_end,
@@ -234,6 +316,19 @@ def update_staff_role(
             )
             db.add(employee)
             db.flush()
+        else:
+            employee.status = "active"
+            employee.designation = designation
+            for field in ("joining_date", "shift_start", "shift_end"):
+                value = getattr(role_update, field)
+                if value is not None:
+                    setattr(employee, field, value)
+        if (
+            new_role == UserRole.receptionist.value
+            and not db.query(EmployeePermission.id).filter(
+                EmployeePermission.employee_id == employee.id,
+            ).scalar()
+        ):
             db.add(EmployeePermission(
                 employee_id=employee.id,
                 can_register_patient=0,
@@ -241,16 +336,10 @@ def update_staff_role(
                 can_checkin_patient=0,
                 can_collect_billing=0,
             ))
-        else:
-            employee.status = "active"
-            for field in ("designation", "joining_date", "shift_start", "shift_end"):
-                value = getattr(role_update, field)
-                if value is not None:
-                    setattr(employee, field, value)
 
     if old_role == UserRole.doctor.value and new_role != old_role and doctor:
         doctor.status = "on_leave"
-    if old_role == UserRole.receptionist.value and new_role != old_role and employee:
+    if new_role == UserRole.doctor.value and employee:
         employee.status = "inactive"
 
     user.role = new_role
@@ -303,10 +392,15 @@ def create_staff_account(
             db.add(doctor)
             db.flush()
             profile_id = doctor.id
-        elif staff_in.role == UserRole.receptionist:
+        else:
             employee = Employee(
                 user_id=user.id,
-                designation=staff_in.designation,
+                designation=(
+                    staff_in.designation
+                    if staff_in.role == UserRole.receptionist
+                    else staff_in.role.value.replace("_", " ").title()
+                ),
+                contact=staff_in.contact,
                 joining_date=staff_in.joining_date,
                 shift_start=staff_in.shift_start,
                 shift_end=staff_in.shift_end,
@@ -315,13 +409,14 @@ def create_staff_account(
             )
             db.add(employee)
             db.flush()
-            db.add(EmployeePermission(
-                employee_id=employee.id,
-                can_register_patient=0,
-                can_schedule_appointment=0,
-                can_checkin_patient=0,
-                can_collect_billing=0,
-            ))
+            if staff_in.role == UserRole.receptionist:
+                db.add(EmployeePermission(
+                    employee_id=employee.id,
+                    can_register_patient=0,
+                    can_schedule_appointment=0,
+                    can_checkin_patient=0,
+                    can_collect_billing=0,
+                ))
             profile_id = employee.id
 
         record_audit_event(
@@ -551,15 +646,28 @@ def admin_delete_doctor(
 ):
     doc = db.query(Doctor).filter(Doctor.id == id).first()
     if not doc: raise HTTPException(status_code=404)
+    linked_user = db.query(User).filter(User.id == doc.user_id).first()
     record_audit_event(
         db,
         actor=current_user,
         action="doctor.deleted",
         resource_type="doctor",
         resource_id=str(doc.id),
-        old_values={"user_id": doc.user_id, "name": doc.name, "status": doc.status},
+        old_values={
+            "user_id": doc.user_id,
+            "name": doc.name,
+            "status": doc.status,
+            "account_active": bool(linked_user.is_active) if linked_user else None,
+        },
+        new_values={"account_active": False},
         **request_audit_metadata(request),
     )
+    if linked_user:
+        linked_user.is_active = False
+        linked_user.email_verification_token_hash = None
+        linked_user.email_verification_expires_at = None
+        linked_user.password_reset_token_hash = None
+        linked_user.password_reset_expires_at = None
     db.delete(doc)
     db.commit()
     return {"status": "deleted"}

@@ -15,7 +15,7 @@ export interface StaffActionResult {
 }
 
 export interface StaffProfileDetails {
-  type: 'doctor' | 'receptionist'
+  type: 'doctor' | 'receptionist' | 'employee'
   id: number
   specialization?: string | null
   department_id?: number | null
@@ -50,6 +50,10 @@ export interface StaffAccountDetails {
 
 export interface StaffDetailsResult extends StaffActionResult {
   account?: StaffAccountDetails
+}
+
+export interface ReceptionistPageAccessResult extends StaffActionResult {
+  permissions?: Record<string, boolean>
 }
 
 function headers(): Record<string, string> {
@@ -187,17 +191,18 @@ export async function getStaffAccountAction(id: number): Promise<StaffDetailsRes
 
 export async function updateStaffRoleAction(formData: FormData): Promise<StaffDetailsResult> {
   const id = optionalString(formData, 'id')
+  const role = optionalString(formData, 'role')
   const response = await fetch(`${API_URL}/admin/staff/${id}/role`, {
     method: 'PATCH',
     headers: headers(),
     body: JSON.stringify({
-      role: optionalString(formData, 'role'),
+      role,
       specialization: optionalString(formData, 'specialization'),
       consultation_fee: optionalString(formData, 'consultation_fee'),
       contact: optionalString(formData, 'contact'),
       timing_start: optionalString(formData, 'timing_start'),
       timing_end: optionalString(formData, 'timing_end'),
-      designation: optionalString(formData, 'designation'),
+      designation: role === 'receptionist' ? 'Receptionist' : null,
       joining_date: optionalString(formData, 'joining_date'),
       shift_start: optionalString(formData, 'shift_start'),
       shift_end: optionalString(formData, 'shift_end'),
@@ -210,3 +215,58 @@ export async function updateStaffRoleAction(formData: FormData): Promise<StaffDe
   revalidatePath('/admin/staff')
   return { success: true, account: await response.json() as StaffAccountDetails }
 }
+
+export async function updateStaffShiftAction(formData: FormData): Promise<StaffDetailsResult> {
+  const id = optionalString(formData, 'id')
+  const response = await fetch(`${API_URL}/admin/staff/${id}/shift`, {
+    method: 'PATCH',
+    headers: headers(),
+    body: JSON.stringify({
+      shift_start: optionalString(formData, 'shift_start'),
+      shift_end: optionalString(formData, 'shift_end'),
+    }),
+  })
+  if (response.status === 401) redirect('/login')
+  if (!response.ok) {
+    return { error: await errorDetail(response, 'Failed to update staff shift') }
+  }
+  revalidatePath('/admin/staff')
+  revalidatePath('/manager/staff')
+  return { success: true, account: await response.json() as StaffAccountDetails }
+}
+
+export async function updateReceptionistPageAccessAction(
+  formData: FormData,
+): Promise<ReceptionistPageAccessResult> {
+  const employeeId = optionalString(formData, 'employee_id')
+  if (!employeeId) return { error: 'Receptionist profile is missing.' }
+
+  const response = await fetch(`${API_URL}/admin/employees/${employeeId}/permissions`, {
+    method: 'PATCH',
+    headers: headers(),
+    body: JSON.stringify({
+      can_register_patient: formData.get('can_register_patient') === 'on',
+      can_schedule_appointment: formData.get('can_schedule_appointment') === 'on',
+      can_checkin_patient: formData.get('can_checkin_patient') === 'on',
+      can_collect_billing: formData.get('can_collect_billing') === 'on',
+    }),
+  })
+  if (response.status === 401) redirect('/login')
+  if (!response.ok) {
+    return { error: await errorDetail(response, 'Failed to update receptionist page access') }
+  }
+
+  const payload = await response.json() as Record<string, boolean | number>
+  const permissions = Object.fromEntries(
+    RECEPTIONIST_PERMISSION_KEYS.map((key) => [key, Boolean(payload[key])]),
+  )
+  revalidatePath('/admin/staff')
+  return { success: true, permissions }
+}
+
+const RECEPTIONIST_PERMISSION_KEYS = [
+  'can_register_patient',
+  'can_schedule_appointment',
+  'can_checkin_patient',
+  'can_collect_billing',
+] as const

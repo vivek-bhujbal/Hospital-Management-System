@@ -10,12 +10,14 @@ import SubmitButton from '@/components/SubmitButton'
 import { fetchAPI } from '@/lib/api'
 import {
   DoctorAppointment,
+  DoctorNurseOption,
   DoctorPatient,
   DoctorPatientHistory,
   shortTime,
   statusClass,
   statusLabel,
 } from '@/lib/doctorTypes'
+import AssignNursingTaskForm from '@/app/doctor/patients/[id]/AssignNursingTaskForm'
 
 function PatientSummary({ patient }: { patient: DoctorPatient | undefined }) {
   if (!patient) return <p className="text-sm text-amber-700">Patient information is unavailable.</p>
@@ -127,7 +129,10 @@ export default async function DoctorConsultation({ searchParams }: { searchParam
   }
 
   const patient = patientMap.get(appointment.patient_id)
-  const history = await fetchAPI(`/patients/${appointment.patient_id}/history`) as DoctorPatientHistory
+  const [history, nurses] = await Promise.all([
+    fetchAPI(`/patients/${appointment.patient_id}/history`) as Promise<DoctorPatientHistory>,
+    fetchAPI('/doctors/nurses') as Promise<DoctorNurseOption[]>,
+  ])
   const canStart = appointment.status === 'confirmed' || appointment.status === 'checked_in'
   const canComplete = appointment.status === 'in_progress'
 
@@ -147,7 +152,7 @@ export default async function DoctorConsultation({ searchParams }: { searchParam
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-900">Patient information</h2>
         <div className="mt-4"><PatientSummary patient={patient} /></div>
-        {patient && <Link href={`/doctor/patients/${patient.id}`} className="mt-4 inline-flex text-sm font-semibold text-blue-700 hover:text-blue-800">View full history &rarr;</Link>}
+        {patient && <div className="mt-4 flex flex-wrap items-center gap-3"><Link href={`/doctor/patients/${patient.id}`} className="text-sm font-semibold text-blue-700 hover:text-blue-800">View full history &rarr;</Link><AssignNursingTaskForm patientId={patient.id} patientName={patient.name} nurses={nurses} /></div>}
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

@@ -106,9 +106,9 @@ class StaffAccountCreate(BaseModel):
         if self.timing_start and self.timing_end and self.timing_start >= self.timing_end:
             raise ValueError('Doctor timing_start must be before timing_end')
         if (self.shift_start is None) != (self.shift_end is None):
-            raise ValueError('Both receptionist shift fields must be supplied together')
-        if self.shift_start and self.shift_end and self.shift_start >= self.shift_end:
-            raise ValueError('Receptionist shift_start must be before shift_end')
+            raise ValueError('Both staff shift fields must be supplied together')
+        if self.shift_start and self.shift_end and self.shift_start == self.shift_end:
+            raise ValueError('Staff shift start and end times must be different')
         return self
 
 
@@ -152,9 +152,20 @@ class StaffRoleUpdate(BaseModel):
         if self.timing_start and self.timing_end and self.timing_start >= self.timing_end:
             raise ValueError('Doctor timing_start must be before timing_end')
         if (self.shift_start is None) != (self.shift_end is None):
-            raise ValueError('Both receptionist shift fields must be supplied together')
-        if self.shift_start and self.shift_end and self.shift_start >= self.shift_end:
-            raise ValueError('Receptionist shift_start must be before shift_end')
+            raise ValueError('Both staff shift fields must be supplied together')
+        if self.shift_start and self.shift_end and self.shift_start == self.shift_end:
+            raise ValueError('Staff shift start and end times must be different')
+        return self
+
+
+class StaffShiftUpdate(BaseModel):
+    shift_start: time
+    shift_end: time
+
+    @model_validator(mode='after')
+    def validate_shift(self):
+        if self.shift_start == self.shift_end:
+            raise ValueError('Shift start and end times must be different')
         return self
 
 
@@ -256,6 +267,7 @@ class EmployeePermissionResponse(EmployeePermissionBase):
 
 class EmployeeBase(BaseModel):
     designation: str
+    contact: Optional[str] = Field(default=None, max_length=20)
     joining_date: Optional[date] = None
     shift_start: Optional[time] = None
     shift_end: Optional[time] = None
@@ -270,6 +282,7 @@ class EmployeeCreate(EmployeeBase):
 
 class EmployeeUpdate(BaseModel):
     designation: Optional[str] = None
+    contact: Optional[str] = Field(default=None, max_length=20)
     shift_start: Optional[time] = None
     shift_end: Optional[time] = None
     status: Optional[EmployeeStatusEnum] = None
@@ -650,9 +663,16 @@ class NursingTaskUpdate(BaseModel):
 
 class NursingTaskResponse(NursingTaskBase):
     id: int
+    created_by_doctor_id: Optional[int] = None
     completed_at: Optional[datetime] = None
     created_at: datetime
+    updated_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
+
+
+class NurseAssignmentOption(BaseModel):
+    id: int
+    name: str
 
 # Pharmacy Feature Schemas
 class MedicineCategoryBase(BaseModel):

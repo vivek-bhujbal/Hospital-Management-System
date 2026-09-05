@@ -1,7 +1,12 @@
-import pytest
+from datetime import timedelta
 
+import pytest
+from jose import jwt
+
+from app.core.config import settings
 from app.core.roles import UserRole
-from app.models.all_models import Patient, User
+from app.core.security import create_access_token
+from app.models.all_models import Doctor, Patient, User
 
 
 EXISTING_ROLES = ["patient", "doctor", "receptionist", "admin"]
@@ -19,8 +24,16 @@ NEW_ROLES = [
 
 
 @pytest.mark.parametrize("role", EXISTING_ROLES)
-def test_existing_roles_can_authenticate(client, create_user, role):
+def test_existing_roles_can_authenticate(client, db, create_user, role):
     user = create_user(role)
+    if role == "doctor":
+        db.add(Doctor(
+            user_id=user.id,
+            name=user.name,
+            specialization="General Medicine",
+            status="active",
+        ))
+        db.commit()
     response = client.post(
         "/auth/login",
         json={"email": user.email, "password": "Strong1!Password"},
@@ -47,6 +60,25 @@ def test_all_declared_roles_are_covered():
     assert {role.value for role in UserRole} == set(EXISTING_ROLES + NEW_ROLES)
 
 
+def test_default_access_token_stays_valid_until_logout(monkeypatch):
+    monkeypatch.setattr(settings, "ACCESS_TOKEN_EXPIRE_MINUTES", 0)
+
+    token = create_access_token({"sub": "1", "role": "patient"})
+
+    assert "exp" not in jwt.get_unverified_claims(token)
+
+
+def test_explicit_access_token_expiry_is_still_supported(monkeypatch):
+    monkeypatch.setattr(settings, "ACCESS_TOKEN_EXPIRE_MINUTES", 0)
+
+    token = create_access_token(
+        {"sub": "1", "role": "patient"},
+        expires_delta=timedelta(minutes=5),
+    )
+
+    assert "exp" in jwt.get_unverified_claims(token)
+
+
 def test_disabled_user_cannot_login(client, create_user):
     user = create_user("doctor", is_active=False)
     response = client.post(
@@ -54,6 +86,18 @@ def test_disabled_user_cannot_login(client, create_user):
         json={"email": user.email, "password": "Strong1!Password"},
     )
     assert response.status_code == 403
+
+
+def test_doctor_without_profile_cannot_login(client, create_user):
+    user = create_user("doctor")
+
+    response = client.post(
+        "/auth/login",
+        json={"email": user.email, "password": "Strong1!Password"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Your account has been disabled."
 
 
 def test_backend_rejects_weak_registration_password(client):

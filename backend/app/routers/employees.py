@@ -74,6 +74,7 @@ def create_employee(
         new_employee = Employee(
             user_id=new_user.id,
             designation=emp_in.designation,
+            contact=emp_in.contact,
             joining_date=emp_in.joining_date,
             shift_start=emp_in.shift_start,
             shift_end=emp_in.shift_end,

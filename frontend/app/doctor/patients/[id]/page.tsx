@@ -8,6 +8,7 @@ import { PageHeader, StatusBadge, WorkflowStepper } from '@/components/ui/HmsUI'
 import { APIError, fetchAPI } from '@/lib/api'
 import {
   DoctorAppointment,
+  DoctorNurseOption,
   DoctorPatientHistory,
   shortTime,
   statusLabel,
@@ -22,6 +23,8 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+
+import AssignNursingTaskForm from './AssignNursingTaskForm'
 
 const consultationSteps = ['Appointment confirmed', 'Consultation started', 'Prescription', 'Completed'] as const
 
@@ -151,10 +154,12 @@ export default async function PatientHistory({ params }: { params: { id: string 
 
   let history: DoctorPatientHistory
   let ownAppointments: DoctorAppointment[]
+  let nurses: DoctorNurseOption[]
   try {
-    ;[history, ownAppointments] = await Promise.all([
+    ;[history, ownAppointments, nurses] = await Promise.all([
       fetchAPI(`/patients/${params.id}/history`) as Promise<DoctorPatientHistory>,
       fetchAPI('/appointments/?doctor_id=me') as Promise<DoctorAppointment[]>,
+      fetchAPI('/doctors/nurses') as Promise<DoctorNurseOption[]>,
     ])
   } catch (error) {
     if (error instanceof APIError && error.status === 404) notFound()
@@ -188,6 +193,7 @@ export default async function PatientHistory({ params }: { params: { id: string 
         eyebrow="Patient record"
         title={patient.name}
         description={`Patient #${patient.id} - Clinical history and consultation workflow`}
+        actions={<AssignNursingTaskForm patientId={patient.id} patientName={patient.name} nurses={nurses} />}
       />
 
       <ConsultationWorkflow appointment={workflowAppointment} patientId={patient.id} />
@@ -261,6 +267,21 @@ export default async function PatientHistory({ params }: { params: { id: string 
             })}
           </div>
         )}
+      </section>
+
+      <section className="hms-card p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-semibold text-slate-950 dark:text-white">Nursing task record</h2><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Care assignments and completion records reported by the nursing team.</p></div><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">Doctor view · Read-only</span></div>
+        {history.nursing_tasks.length === 0 ? <p className="mt-4 rounded-xl border border-dashed border-slate-300 p-6 text-center text-slate-500 dark:border-slate-700 dark:text-slate-400">No nursing tasks recorded.</p> : <div className="mt-4 space-y-3">{history.nursing_tasks.map((task) => <div key={task.id} className="rounded-xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-950/40"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-semibold text-slate-950 dark:text-white">{task.task_type}</p><p className="mt-1 text-xs text-slate-500">Nurse: {task.nurse_name} · Assigned by: {task.doctor_name} · Task #{task.id}</p></div><div className="flex items-center gap-2"><span className="rounded-full bg-orange-50 px-2.5 py-1 text-xs font-semibold capitalize text-orange-700 ring-1 ring-inset ring-orange-200">{task.priority === 'emergency' ? 'Urgent' : task.priority}</span><StatusBadge status={statusLabel(task.status)} /></div></div><p className="mt-3 whitespace-pre-line text-sm text-slate-700 dark:text-slate-300">{task.description}</p><p className="mt-3 text-xs text-slate-500">Created {new Date(task.created_at).toLocaleString()} · Due {task.due_at ? new Date(task.due_at).toLocaleString() : 'not specified'} · Completed {task.completed_at ? new Date(task.completed_at).toLocaleString() : 'not completed'}</p></div>)}</div>}
+      </section>
+
+      <section className="hms-card overflow-hidden">
+        <div className="border-b border-slate-200 px-6 py-5 dark:border-slate-800"><h2 className="text-xl font-semibold text-slate-950 dark:text-white">Nursing vital history</h2><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Historical readings are immutable from this Doctor view.</p></div>
+        {history.vitals.length === 0 ? <p className="p-6 text-slate-500 dark:text-slate-400">No nursing vitals recorded.</p> : <div className="overflow-x-auto"><table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800"><thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500 dark:bg-slate-950/40"><tr><th className="px-5 py-4">Recorded</th><th className="px-5 py-4">Nurse</th><th className="px-5 py-4">Temperature / BP</th><th className="px-5 py-4">HR / RR / SpO₂</th><th className="px-5 py-4">Notes</th></tr></thead><tbody className="divide-y divide-slate-100 dark:divide-slate-800">{history.vitals.map((vital) => <tr key={vital.id}><td className="px-5 py-4 text-slate-700 dark:text-slate-300">{new Date(vital.recorded_at).toLocaleString()}</td><td className="px-5 py-4 font-medium text-slate-950 dark:text-white">{vital.recorded_by_name}</td><td className="px-5 py-4 text-slate-700 dark:text-slate-300">{vital.temperature ?? '—'} / {vital.blood_pressure_systolic && vital.blood_pressure_diastolic ? `${vital.blood_pressure_systolic}/${vital.blood_pressure_diastolic}` : '—'}</td><td className="px-5 py-4 text-slate-700 dark:text-slate-300">{vital.pulse ?? '—'} / {vital.respiratory_rate ?? '—'} / {vital.oxygen_saturation ?? '—'}</td><td className="max-w-xs px-5 py-4 text-slate-600 dark:text-slate-400">{vital.notes || '—'}</td></tr>)}</tbody></table></div>}
+      </section>
+
+      <section className="hms-card p-6">
+        <h2 className="text-xl font-semibold text-slate-950 dark:text-white">Nursing observations</h2><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Factual care notes submitted by Nurses; Doctor diagnosis remains separate.</p>
+        {history.nursing_notes.length === 0 ? <p className="mt-4 text-slate-500 dark:text-slate-400">No nursing observations recorded.</p> : <div className="mt-4 space-y-3">{history.nursing_notes.map((note) => <div key={note.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/40"><p className="whitespace-pre-line text-sm text-slate-800 dark:text-slate-200">{note.note}</p><p className="mt-2 text-xs text-slate-500">{note.nurse_name} · {new Date(note.created_at).toLocaleString()}{note.appointment_id ? ` · Appointment #${note.appointment_id}` : ''}</p></div>)}</div>}
       </section>
     </div>
   )

@@ -55,6 +55,11 @@ OPERATIONAL_STAFF_ROLES = (
     UserRole.insurance_officer.value,
     UserRole.ambulance_staff.value,
 )
+MANAGER_STAFF_DIRECTORY_ROLES = (
+    UserRole.hospital_manager.value,
+    UserRole.doctor.value,
+    *OPERATIONAL_STAFF_ROLES,
+)
 
 
 def _hospital_timezone():
@@ -82,9 +87,17 @@ def _availability(*, active: bool, shift_start=None, shift_end=None) -> str:
     if not active:
         return "Unavailable"
     now = datetime.now(_hospital_timezone()).time().replace(tzinfo=None)
-    if shift_start and now < shift_start:
+    if shift_start and shift_end:
+        working = (
+            shift_start <= now < shift_end
+            if shift_start < shift_end
+            else now >= shift_start or now < shift_end
+        )
+        if not working:
+            return "Off shift"
+    elif shift_start and now < shift_start:
         return "Off shift"
-    if shift_end and now >= shift_end:
+    elif shift_end and now >= shift_end:
         return "Off shift"
     return "Available"
 
@@ -318,25 +331,51 @@ def get_staff(
     _: User = Depends(require_permission(Permission.staff_view)),
 ):
     result = []
-    users = db.query(User).filter(User.role.in_(OPERATIONAL_STAFF_ROLES)).order_by(User.name).all()
+    users = db.query(User).filter(User.role.in_(MANAGER_STAFF_DIRECTORY_ROLES)).order_by(User.name).all()
+    doctors_by_user_id = {
+        doctor.user_id: doctor
+        for doctor in db.query(Doctor).filter(Doctor.user_id.isnot(None)).all()
+    }
+    employees_by_user_id = {
+        employee.user_id: employee
+        for employee in db.query(Employee).all()
+    }
+    department_names = {
+        department.department_id: department.name
+        for department in db.query(Department).all()
+    }
     for user in users:
-        employee = None
-        if user.role == UserRole.receptionist.value:
-            employee = db.query(Employee).filter(Employee.user_id == user.id).first()
-        active = bool(user.is_active) and (not employee or employee.status == "active")
+        doctor = doctors_by_user_id.get(user.id) if user.role == UserRole.doctor.value else None
+        if user.role == UserRole.doctor.value and not doctor:
+            continue
+        employee = employees_by_user_id.get(user.id) if user.role != UserRole.doctor.value else None
+        if user.role == UserRole.doctor.value:
+            profile_active = bool(doctor and doctor.status == "active")
+        elif employee:
+            profile_active = employee.status == "active"
+        else:
+            profile_active = True
+        active = bool(user.is_active) and profile_active
+        designation = (
+            doctor.specialization if doctor and doctor.specialization
+            else employee.designation if employee
+            else user.role.replace("_", " ").title()
+        )
+        shift_start = doctor.timing_start if doctor else employee.shift_start if employee else None
+        shift_end = doctor.timing_end if doctor else employee.shift_end if employee else None
         result.append(ManagerStaff(
             id=user.id,
             name=user.name,
             role=user.role,
-            designation=employee.designation if employee else user.role.replace("_", " ").title(),
-            department_name=None,
-            shift_start=employee.shift_start if employee else None,
-            shift_end=employee.shift_end if employee else None,
+            designation=designation,
+            department_name=department_names.get(doctor.department_id) if doctor else None,
+            shift_start=shift_start,
+            shift_end=shift_end,
             status="active" if active else "inactive",
             availability=_availability(
                 active=active,
-                shift_start=employee.shift_start if employee else None,
-                shift_end=employee.shift_end if employee else None,
+                shift_start=shift_start,
+                shift_end=shift_end,
             ),
         ))
     return result

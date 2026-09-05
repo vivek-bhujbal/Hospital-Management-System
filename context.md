@@ -1,19 +1,19 @@
 # Hospital Management System — Project Context
 
-> Last reconciled with the authorization-separation working tree based on branch `main` at commit `a76521a` on 2026-09-01.
+> Last reconciled with the complete working tree based on branch `main` at commit `c56a199` on 2026-09-05.
 >
 > This document describes the application as it currently exists in code. When this file conflicts with the README or older walkthrough notes, treat the implementation files named here as the source of truth.
 
 ## 1. Project summary
 
-The Hospital Management System (HMS) is a role-based, full-stack web application for managing patient registration, appointments, consultations, prescriptions, billing, doctors, and receptionist employees.
+The Hospital Management System (HMS) is a role-based, full-stack web application for managing patient registration, appointments, consultations, prescriptions, billing, doctors, and clinical/operational staff accounts.
 
 The application supports thirteen user roles. The original roles remain backward compatible:
 
 - `patient`: self-registers, verifies email, books appointments, and views personal clinical and billing information.
 - `doctor`: views assigned appointments and patient history, updates a doctor profile, and completes consultations by issuing prescriptions.
 - `receptionist`: registers walk-in patients, schedules and checks in appointments, and collects payments, subject to per-employee permissions.
-- `admin`: views hospital-wide metrics and manages doctors, receptionist employees, permissions, patients, appointments, and billing reports.
+- `admin`: views hospital-wide metrics and manages doctors, all non-administrator staff accounts, receptionist page permissions, contacts, shifts, patients, appointments, and billing reports.
 
 Enterprise roles are `super_admin`, `hospital_manager`, `nurse`, `pharmacist`, `lab_technician`, `radiologist`, `accountant`, `insurance_officer`, and `ambulance_staff`. Hospital Manager is a read-only hospital-operations role; it monitors patient flow, appointments, staffing, doctors, departments, reports, and revenue summaries without accessing clinical, financial-transaction, or specialist operational modules. Pharmacist is an exact-role pharmacy operator with read-only access to doctor prescriptions, a separate verification state machine, batch inventory adjustments, and atomic dispensing. Lab Technician is an exact-role laboratory operator with assignment-scoped orders, guarded sample/test transitions, draft results, and immutable finalized results. Radiologist is an exact-role imaging operator with assignment-scoped orders, one study per order, guarded interpretation/report transitions, and immutable finalized report versions with explicit amendments. Accountant is an exact-role finance operator with appointment-backed invoices, duplicate-safe payments, append-only audited expenses, and non-clinical financial reporting. Insurance Officer is an exact-role insurance operator with policy verification, one claim per invoice, guarded review/decision/settlement transitions, required-document tracking, and immutable officer-attributed action history. Ambulance Staff is an exact-role transport operator with assigned vehicles, shared pending requests, staff-owned trips, guarded status transitions, and audited history. The other backend modules cover organizations/settings/audit and assignment-scoped nursing. The frontend exposes authenticated live-data portals for each role.
 
@@ -33,6 +33,21 @@ The active application is the nested repository at `Hospital-Management-System/`
 - Accountant now has a dedicated five-page `/accountant/*` portal and exact-role finance API. Invoice-backed payment locking, transaction uniqueness, expense idempotency/supporting references, append-only records, and audit events protect every financial mutation.
 - Insurance Officer now has a dedicated `/insurance/*` portal and exact-role claim API. Database uniqueness blocks duplicate invoice claims; guarded submission, review, document, decision, and insurance-settlement actions record Officer, timestamp, status, and reason history without exposing clinical fields.
 - Ambulance Staff now has a dedicated `/ambulance/*` portal and exact-role transport API. Pending requests form a shared dispatch queue, while accepted requests and trips are staff-owned; guarded assignment/trip transitions persist the responsible staff, vehicle, timing, status history, and audit events without exposing clinical data.
+- Admin Staff Accounts now creates and inspects every non-administrator staff role through one workflow. An optional contact input is available and persisted for every role; Doctors use the Doctor profile and all other roles use a shared Employee profile.
+- Admin can assign or change an overall working shift for every staff role. Non-Doctor shifts support overnight ranges, Doctor working hours still require start before end, and every shift change is audited.
+- Receptionist Designation is no longer entered in the Staff Account UI; it is normalized to `Receptionist`. The staff-detail dialog now lets Admin directly enable or disable Register Patient, Schedule Appointment, Check-in Patient, and Collect Billing access.
+- Hospital Manager's read-only Staff directory now includes Hospital Manager, Doctor, Receptionist, Nurse, Pharmacist, Lab Technician, Radiologist, Accountant, Insurance Officer, and Ambulance Staff records. Patient, Admin, Super Admin, and deleted Doctor identities are excluded.
+- Patient appointment selection now renders 15-minute Doctor slots instead of 30-minute slots while retaining backend working-hour and collision validation.
+- Destructive Doctor deletion and Super Admin role-grant removal now use a reusable confirmation dialog. Deleting a Doctor removes the Doctor profile, disables the linked login, clears outstanding account tokens, invalidates existing sessions, and removes the orphan identity from Admin/Manager staff directories.
+- Idle authentication expiry is disabled by default with `ACCESS_TOKEN_EXPIRE_MINUTES=0`. Default JWTs omit `exp`, frontend auth values use browser-session cookies, and explicit logout or live account/profile deactivation remains authoritative.
+- Migration `20260905_0013` adds nullable contact information to shared employee profiles using guarded, additive upgrade/downgrade logic.
+- The Nurse workflow is now fully assignment-scoped end to end. Doctors can assign an authorized patient to an active Nurse from patient or consultation context; tasks persist their creating Doctor, begin as `pending`, and grant patient access only while `pending` or `in_progress`. Nurse dashboards, patients, appointments, vitals, observations, and task transitions use live scoped data, while completed tasks remain in history without retaining patient access.
+- Nurses now have a dedicated read-only `/nurse/history` archive. A Nurse can review every Patient previously assigned to that Nurse plus only that Nurse's tasks, recorded vitals, observations, and related appointment context after active access ends. An unrelated Nurse remains denied. Authorized Doctors see the full nursing task, vital, and observation record inside the existing Patient detail page.
+- Migration `20260905_0014` adds the nullable, indexed `nursing_tasks.created_by_doctor_id` foreign key without changing legacy task records.
+- In-app notifications are enabled in the shared shell for all thirteen roles. Audited appointment, consultation, nursing, laboratory, radiology, pharmacy, billing, insurance, ambulance, staff-account, and dynamic role-access events create transaction-safe, role-scoped notification rows; Patient bookings notify the assigned Doctor and active Receptionists, while Doctor-assigned nursing tasks notify only the assigned Nurse.
+- The notification bell now updates over an authenticated WebSocket with a ten-second polling fallback, reconnects automatically, refreshes when the tab becomes visible, and supports single-item or all-item read actions. Browser JavaScript receives only a two-minute notification-scoped socket ticket, never the long-lived login JWT.
+- The account service normalizes every email with trim/lowercase semantics and migration `20260902_0012` enforces generated-column uniqueness at the database layer. Existing normalized duplicates make the migration fail safely instead of deleting or merging accounts.
+- Revisions `20260901_0010` and `20260901_0011` reconcile workflow constraints/obsolete columns and expand prescription dosage from `VARCHAR(100)` to `TEXT` for complete clinical directions.
 
 ## 2. Technology stack
 
@@ -93,10 +108,10 @@ Hospital-Management-System/
 │   ├── app/
 │   │   ├── (auth)/            # Login, registration, verification, password reset
 │   │   ├── actions/           # Next.js server actions grouped by role
-│   │   ├── admin/
-│   │   ├── doctor/
-│   │   ├── patient/
-│   │   └── receptionist/
+│   │   ├── admin/, super-admin/, manager/
+│   │   ├── doctor/, patient/, receptionist/, nurse/
+│   │   ├── pharmacist/, lab/, radiologist/, accountant/
+│   │   └── insurance/, ambulance/
 │   ├── components/            # Shared dashboards, forms, polling, receipts, toasts
 │   ├── lib/                   # Authenticated API helper and UI permission helper
 │   ├── package.json
@@ -127,8 +142,8 @@ Most dashboard pages are Server Components. They call `frontend/lib/api.ts`, whi
 2. Adds `Authorization: Bearer <token>`.
 3. calls `API_INTERNAL_URL` from server code when configured, otherwise `NEXT_PUBLIC_API_URL`, defaulting to `http://localhost:8000`.
 4. disables caching with `cache: 'no-store'`.
-5. redirects to `/login` on a backend `401` response.
-6. throws a generic error containing the backend status/body for other failures.
+5. redirects to `/session-expired` on a backend `401`, on a failed `/auth/me` request, or when a `403` explicitly reports that the account was disabled. That route clears all auth cookies and redirects to `/login`.
+6. throws an `APIError` containing the backend status/body for other failures.
 
 Mutations are implemented as role-specific Server Actions in `frontend/app/actions/`. Successful actions revalidate affected paths and sometimes redirect.
 
@@ -146,23 +161,23 @@ Public patient registration is handled by `POST /auth/register`.
 - Only the SHA-256 hash of the token is stored.
 - Verification tokens expire after 24 hours.
 - The email link targets `${FRONTEND_URL}/verify-email?token=...`.
-- Re-registering an unverified email rotates and resends its verification token, then returns `409`.
+- Any already-owned email, including case/whitespace variants and unverified accounts, is rejected with the same safe `409` conflict response across account-creation paths.
 - Login is blocked until `is_email_verified` is true.
 
 Registration, reset, and administrator bootstrap paths enforce at least eight characters with uppercase, lowercase, numeric, and special characters in the backend as well as the frontend.
 
 ### 5.2 Login and session storage
 
-`POST /auth/login` verifies the email/password, active flag, and email verification state. The JWT contains:
+`POST /auth/login` verifies the email/password, active flag, email verification state, and required role profile. The JWT contains:
 
 - `sub`: user ID as a string
 - `role`
 - `email`
-- `exp`
+- `exp` only when a positive configured lifetime or an explicit per-token expiry is supplied
 
-The Next.js login action stores the JWT in an HttpOnly, `SameSite=Lax` cookie named `token`. The cookie is marked `Secure` in production. Receptionist permissions, when present, are stored in a second HttpOnly cookie named `employee_permissions`.
+The Next.js login action stores the JWT in an HttpOnly, `SameSite=Lax` cookie named `token`. The cookie is marked `Secure` in production. Receptionist permissions, effective permissions, and role are stored in matching HttpOnly compatibility cookies.
 
-JWT lifetime uses `ACCESS_TOKEN_EXPIRE_MINUTES`, and all frontend session cookies use the backend-provided `expires_in` value.
+`ACCESS_TOKEN_EXPIRE_MINUTES=0` is the current default and means no idle/timed JWT expiry. In this mode the frontend omits cookie `maxAge`, producing browser-session cookies that remain valid during inactivity until explicit logout, browser-session termination, or server-side account/profile revocation. Setting a positive value restores timed JWT and cookie expiry, and explicitly expiring security tokens remain supported.
 
 ### 5.3 Password recovery
 
@@ -172,7 +187,7 @@ JWT lifetime uses `ACCESS_TOKEN_EXPIRE_MINUTES`, and all frontend session cookie
 
 ### 5.4 Backend authorization model
 
-`get_current_user` decodes the bearer token, reloads the user by ID, and rejects a user deactivated after token issuance. Receptionists must also have a linked active `employees` row; missing or inactive employee profiles are rejected for new logins and existing sessions.
+`get_current_user` decodes the bearer token, reloads the user by ID, and rejects a user deactivated after token issuance. Doctors must retain a linked Doctor profile. Receptionists must retain a linked active Employee profile. Missing/deleted Doctor profiles and missing/inactive Receptionist profiles are rejected for new logins and existing sessions, so non-expiring default tokens do not bypass live account revocation.
 
 Two dependency types enforce access:
 
@@ -228,7 +243,7 @@ Enterprise roles have dedicated route groups and backend APIs. Operational roles
 4. `/verify-email` posts the token to the backend.
 5. Patient logs in and is redirected to `/patient/home`.
 
-If SMTP credentials are absent, the email service logs a warning and returns false, but registration still succeeds. There is no background queue or retry mechanism.
+If SMTP delivery fails, the user/profile transaction has already been committed, then the endpoint returns `503`; the account remains unverified and cannot log in. There is no background queue or retry mechanism for this registration email path.
 
 ### 7.2 Walk-in patient onboarding
 
@@ -247,7 +262,7 @@ requested → confirmed → checked_in → in_progress → completed
       └────────────────────────────────────────────→ cancelled
 ```
 
-New bookings are always stored as `requested`, regardless of an input status. Confirm, check-in, consultation start, completion, and cancellation enforce their allowed predecessor states. Booking rejects missing/inactive doctors, past dates/times, times outside doctor working hours, doctor slot collisions, and a patient being double-booked in the same slot.
+New bookings are always stored as `requested`, regardless of an input status. Confirm, check-in, consultation start, completion, and cancellation enforce their allowed predecessor states. The Patient appointment UI generates 15-minute choices across the selected Doctor's working range. Booking rejects missing/inactive doctors, past dates/times, times outside doctor working hours, doctor slot collisions, and a patient being double-booked at the same time.
 
 Patients can only book for their own linked patient ID. Receptionist booking and confirmation require `can_schedule_appointment`; check-in requires `can_checkin_patient`.
 
@@ -292,7 +307,7 @@ All endpoints are under the FastAPI service at port `8000`. Except where marked 
 |---|---|---|---|
 | GET | `/patients/me` | Patient | Get own patient profile |
 | PUT | `/patients/me` | Patient | Replace editable own-profile fields |
-| GET | `/patients/{id}/history` | Doctor, admin | Return the patient plus appointment/prescription history; Doctor access requires an assignment |
+| GET | `/patients/{id}/history` | Doctor, admin | Return patient, appointment, prescription, nursing-task, vital, and nursing-observation history; Doctor access requires an assignment |
 | GET | `/patients/` | Receptionist, doctor, admin | List patient profiles; Doctor results are restricted to patients with assigned appointments |
 | POST | `/patients/` | Admin or receptionist with register permission | Create a walk-in patient profile |
 
@@ -303,6 +318,8 @@ All endpoints are under the FastAPI service at port `8000`. Except where marked 
 | GET | `/doctors/me` | Doctor | Get own doctor profile |
 | PUT | `/doctors/me` | Doctor | Update own profile fields |
 | GET | `/doctors/` | Any authenticated user | List active doctors |
+| GET | `/doctors/nurses` | Doctor | List active Nurse accounts available for task assignment |
+| POST | `/doctors/nursing-tasks` | Doctor | Assign an authorized patient to an active Nurse with a pending care task |
 
 ### Appointments (`/appointments`)
 
@@ -334,28 +351,35 @@ All endpoints are under the FastAPI service at port `8000`. Except where marked 
 
 | Method | Path | Access | Purpose |
 |---|---|---|---|
-| GET | `/admin/overview` | Admin | Counts for patients, doctors, today's appointments, pending bills |
+| GET | `/admin/overview` | Admin | Counts, collected revenue, and recent appointment/billing activity |
+| GET | `/admin/staff` | Admin | List all non-administrator staff accounts; Doctor identities without a Doctor profile are excluded |
+| POST | `/admin/staff` | Admin | Create any non-administrator staff account plus its Doctor/Employee profile and contact |
+| GET | `/admin/staff/{staff_id}` | Admin | Return account and role-specific profile details, including Receptionist permissions |
+| PATCH | `/admin/staff/{staff_id}/role` | Admin | Change among non-administrator staff roles and create/reactivate the required profile |
+| PATCH | `/admin/staff/{staff_id}/shift` | Admin | Set an audited overall working shift for any staff role |
+| PUT | `/admin/hospital-managers/{manager_id}/activate` | Admin | Activate a Hospital Manager account |
+| PUT | `/admin/hospital-managers/{manager_id}/deactivate` | Admin | Deactivate a Hospital Manager account |
 | GET | `/admin/doctors` | Admin | List all doctors, including inactive/on-leave |
 | POST | `/admin/doctors` | Admin | Create doctor user and profile |
 | PUT | `/admin/doctors/{id}` | Admin | Update doctor profile and email |
-| DELETE | `/admin/doctors/{id}` | Admin | Hard-delete doctor profile only |
+| DELETE | `/admin/doctors/{id}` | Admin | Audit and delete the Doctor profile, disable its linked user, and clear outstanding account tokens |
 | PATCH | `/admin/doctors/{id}/reset-password` | Admin | Replace doctor's password |
 | GET | `/admin/patients` | Admin | List all patients |
 | GET | `/admin/appointments` | Admin | List all appointments |
 | GET | `/admin/billing/report` | Admin | Totals plus 50 most recent bills |
-| GET | `/admin/settings` | Any authenticated user | Read/create hospital receipt settings |
+| GET | `/admin/settings` | Admin | Read/create hospital receipt settings |
 
 ### Employees (`/admin/employees`)
 
 | Method | Path | Access | Purpose |
 |---|---|---|---|
 | GET | `/admin/employees/` | Admin | List receptionist employees and permissions |
-| POST | `/admin/employees/` | Admin | Create receptionist user/profile with default permissions |
-| PATCH | `/admin/employees/{id}` | Admin | Update designation, shift, or status |
+| POST | `/admin/employees/` | Admin | Legacy endpoint to create a receptionist user/profile with contact and default permissions |
+| PATCH | `/admin/employees/{id}` | Admin | Update receptionist designation, contact, shift, or status |
 | DELETE | `/admin/employees/{id}` | Admin | Soft-deactivate employee record |
 | PATCH | `/admin/employees/{id}/permissions` | Admin | Replace permission flags |
 
-The unused `/receptionists/` placeholder router has been removed.
+The Staff Accounts screen uses `/admin/staff` as the consolidated workflow. The legacy `/admin/employees` API remains for receptionist-specific profile/status and permission operations. The unused `/receptionists/` placeholder router has been removed.
 
 ### Nursing (`/nurse`)
 
@@ -363,18 +387,20 @@ Every endpoint in this router requires the exact `nurse` role. Patient, appointm
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/nurse/dashboard` | Assignment-scoped daily metrics, upcoming appointments, and urgent task alerts |
-| GET | `/nurse/patients` | List patients with an active task assigned to the current Nurse |
+| GET | `/nurse/dashboard` | Live unique-patient, pending/active-task, vitals, waiting, appointment, and urgent metrics within the current Nurse's active assignments |
+| GET | `/nurse/history` | List the current Nurse's active and past assigned Patients with own task/vital/note totals and latest activity |
+| GET | `/nurse/history/{patient_id}` | Read one previously assigned Patient's immutable work history, limited to the current Nurse's tasks, vitals, notes, and related appointment context |
+| GET | `/nurse/patients` | List only patients with an active task assigned to the current Nurse, including task priority/status, assigning Doctor, appointment, and latest-vital context |
 | GET | `/nurse/patients/{patient_id}` | Return nursing-relevant patient basics, appointments, read-only prescriptions, vitals, observations, and tasks |
 | GET | `/nurse/appointments` | List appointments for actively assigned patients |
 | GET/POST | `/nurse/vitals` | List assigned-patient observations or append a timestamped vital record |
 | GET | `/nurse/vitals/patient/{patient_id}` | Read the vital history of an assigned patient |
 | POST | `/nurse/notes` | Append a nursing observation for an assigned patient |
-| GET | `/nurse/tasks` | List only the current Nurse's tasks |
+| GET | `/nurse/tasks` | List only the current Nurse's active and historical tasks with creator and current patient-access context |
 | PUT | `/nurse/tasks/{task_id}` | Start or complete an assigned task using guarded transitions |
 | POST | `/doctors/nursing-tasks` | Allow a Doctor to assign a task for one of the Doctor's own patients to an active Nurse |
 
-There are no Nurse vital update/delete endpoints. Historical vitals are append-only and every create/status mutation writes an audit event.
+Active Nurse assignments are exactly `pending` and `in_progress`; only `pending → in_progress → completed` is allowed. Completion removes that task from active counts and patient-access calculation while preserving its history. There are no Nurse vital update/delete endpoints. Historical vitals and observations are append-only and every create/status mutation writes an audit event.
 
 ### Pharmacy (`/pharmacy` API)
 
@@ -491,6 +517,19 @@ There is no generic status mutation or vehicle deletion endpoint. Every accepted
 
 FastAPI also exposes its normal interactive documentation at `/docs` and OpenAPI schema at `/openapi.json` unless configuration changes.
 
+### Notifications and realtime
+
+| Method | Path | Access | Purpose |
+|---|---|---|---|
+| GET | `/notifications/me` | Any active authenticated user | Return the latest 50 role-scoped in-app notifications |
+| PUT | `/notifications/{notification_id}/read` | Notification owner | Mark one notification as read |
+| PUT | `/notifications/read-all` | Any active authenticated user | Mark all of the current user's notifications as read |
+| GET/PUT | `/notifications/preferences` | Any active authenticated user | Read or update channel/event preferences |
+| POST | `/notifications/socket-ticket` | Any active authenticated user | Issue a two-minute, notification-only WebSocket ticket |
+| WebSocket | `/ws/notifications` | Scoped socket ticket | Push per-user notification refresh events and unread counts |
+
+All role portals render the same notification center through `DashboardLayout`/`AppShell`. In-app rows are committed in the same database transaction as their audited workflow event. The WebSocket observes committed notification state every two seconds, while the frontend's ten-second authenticated polling path provides recovery if a proxy or network blocks WebSockets.
+
 ### RBAC and audit (`/rbac`)
 
 | Method | Path | Access | Purpose |
@@ -506,6 +545,7 @@ Every endpoint in this router requires the `super_admin` role. Mutations additio
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/super-admin/overview` | Return platform counts, recent audit activity, and service health |
+| GET | `/super-admin/users` | Return a read-only directory of system users across every role |
 | GET/POST | `/super-admin/settings` | List or create platform-wide key/value settings |
 | PUT | `/super-admin/settings/{setting_id}` | Update a system setting |
 | GET/POST | `/super-admin/hospitals` | List or create hospital organizations |
@@ -534,6 +574,7 @@ Dynamic grants cannot assign administrative-only permissions to operational role
 - `/verify-email`: consumes the verification token from the URL
 - `/forgot-password`: requests a reset email
 - `/reset-password`: consumes a reset token and sets a new password
+- `/session-expired`: route handler that clears all authentication/permission cookies and redirects to `/login`
 - `/portal`: compatibility redirect for bookmarks created by the abandoned generic portal
 
 ### Patient portal
@@ -549,8 +590,8 @@ Dynamic grants cannot assign administrative-only permissions to operational role
 - `/doctor/home`: clinical-only dashboard with today's totals, waiting/check-in/in-progress/completed counts, upcoming appointment, queue, and status-aware actions
 - `/doctor/appointments`: named assigned appointments, reasons, check-in state, and status-aware view/start/continue actions
 - `/doctor/patients`: searchable directory restricted to patients associated with the Doctor's appointments
-- `/doctor/patients/[id]`: read-only patient basics, appointment history, and prescription history with assignment enforcement
-- `/doctor/consultation`: select a ready appointment, review patient/history, start consultation, and submit diagnosis/medicines/dosage/instructions/notes
+- `/doctor/patients/[id]`: read-only patient basics, appointment/prescription history, assignment enforcement, and a modal to assign that patient to an active Nurse
+- `/doctor/consultation`: select a ready appointment, review patient/history, assign an active Nurse without re-entering the patient, start consultation, and submit diagnosis/medicines/dosage/instructions/notes
 - `/doctor/profile`: edit only the Doctor's own professional/contact/schedule fields; role, account status, fees, and administrative settings are not editable
 
 ### Receptionist portal
@@ -567,12 +608,10 @@ Permission-specific receptionist links use live effective permissions. Register,
 ### Admin portal
 
 - `/admin/home`: hospital overview cards
-- `/admin/doctors`: list and add doctors
+- `/admin/doctors`: list/add doctors and delete through a required confirmation dialog; successful deletion disables the linked login
 - `/admin/doctors/[id]`: doctor details
 - `/admin/doctors/[id]/edit`: edit doctor and reset login password
-- `/admin/employees`: list and add receptionist employees
-- `/admin/employees/[id]/permissions`: edit permissions
-- `/admin/staff`: create clinical and operational staff login accounts, including Hospital Managers; activate/deactivate Manager accounts
+- `/admin/staff`: create all non-administrator clinical/operational accounts with contact and optional shift; inspect account/profile details; change staff roles; assign every role's overall shift; edit Receptionist page access; activate/deactivate Hospital Managers
 - `/admin/patients`: all patients
 - `/admin/appointments`: all appointments
 - `/admin/billing`: collected revenue, pending dues, recent transactions
@@ -580,10 +619,11 @@ Permission-specific receptionist links use live effective permissions. Register,
 ### Super Admin portal
 
 - `/super-admin/home`: live resource counts and database/Redis status
+- `/super-admin/users`: read-only system-wide account directory across every role
 - `/super-admin/admins`: create, list, activate, and deactivate Admin accounts; detail pages can reset an Admin password
 - `/super-admin/hospitals`: create organizations and toggle active state
 - `/super-admin/roles`: read-only role hierarchy and responsibility reference
-- `/super-admin/permissions`: create and revoke dynamic role grants
+- `/super-admin/permissions`: create dynamic role grants and revoke them through a required confirmation dialog
 - `/super-admin/settings`: create and update platform-wide system settings
 - `/super-admin/features`: create and toggle feature flags
 - `/super-admin/audit-logs`: read audit history
@@ -597,22 +637,24 @@ The organization, settings, permissions, feature-flag, and administrator screens
 - `/manager/appointments`: hospital-wide read-only appointment monitor with client-side date, doctor, department, and status filters
 - `/manager/patients`: searchable operational patient directory; excludes clinical history, address, and blood group
 - `/manager/doctors`: doctor status, availability, department, schedule, and workload monitor
-- `/manager/staff`: read-only staff role, shift, status, and availability monitor
+- `/manager/staff`: read-only directory for all non-administrator staff roles with role, designation/specialization, department, Admin-assigned shift, status, and current availability
 - `/manager/reports`: date-scoped appointment/patient/staff/department workload and read-only revenue summaries
 - `/manager/departments`: optional supported department monitor; no Manager mutation actions
 
-Manager APIs require the exact `hospital_manager` role plus a relevant read-only permission. The role has no clinical, prescription, payment collection, staff-account, permission/security, department-mutation, pharmacy, laboratory, radiology, accounting, insurance, or ambulance permissions. Admin provisions and activates/deactivates Hospital Manager identities through `/admin/staff`; Super Admin continues to manage Admin identities only. Provisioning never grants the Manager administrative access.
+Manager APIs require the exact `hospital_manager` role plus a relevant read-only permission. The Staff directory includes Hospital Manager and every operational role, including Doctors, but excludes Patient/Admin/Super Admin identities and Doctor users whose Doctor profile has been deleted. Overnight non-Doctor shifts are evaluated correctly when calculating availability. The role has no clinical, prescription, payment collection, staff-account, permission/security, department-mutation, pharmacy, laboratory, radiology, accounting, insurance, or ambulance permissions. Admin provisions and activates/deactivates Hospital Manager identities through `/admin/staff`; Super Admin continues to manage Admin identities only. Provisioning never grants the Manager administrative access.
 
 ### Nurse portal
 
-- `/nurse/home`: assignment-scoped dashboard with today's patients, waiting patients, vital/task needs, upcoming appointments, and urgent alerts
-- `/nurse/patients`: searchable directory limited to patients with an active task assigned to the Nurse
-- `/nurse/patient/[id]`: nursing-relevant patient detail with read-only appointments, diagnosis/prescriptions, vital history, observations, and tasks
-- `/nurse/appointments`: read-only appointments and task context for actively assigned patients
+- `/nurse/home`: assignment-scoped live dashboard prioritizing urgent alerts, active/pending tasks, vital needs, assigned/waiting patients, and upcoming appointments
+- `/nurse/patients`: searchable active-assignment directory with assigning Doctor, priority/status, latest vital/appointment, and patient/task/vital/note quick actions
+- `/nurse/history`: searchable read-only archive of active and completed Patient assignments with task, vital, observation, and last-activity totals
+- `/nurse/history/[id]`: read-only detail of the logged-in Nurse's own work for a previously assigned Patient, including completed tasks and related appointment context
+- `/nurse/patient/[id]`: protected nursing-relevant patient detail with read-only appointments, diagnosis/prescriptions, vital history, observations, creator-attributed tasks, and append-only care actions
+- `/nurse/appointments`: read-only appointments, Doctor/department, and task context for actively assigned patients
 - `/nurse/vitals`: append a timestamped vital/observation record and review immutable history
-- `/nurse/tasks`: view assigned tasks and perform only `pending → in_progress → completed` transitions
+- `/nurse/tasks`: filter own tasks by status, priority, and patient; start/complete valid tasks; retain completed history without stale patient links
 
-The Nurse role has only focused nursing permissions (`nursing.view`, `nursing.record_vitals`, `nursing.record_notes`, and `nursing.manage_tasks`). It has no generic patient-history/update, appointment mutation, consultation mutation, prescription, billing, pharmacy, laboratory, radiology, insurance, ambulance, staff, settings, or administrative permissions. Exact API role checks and the frontend route whitelist block cross-role and removed Nurse URLs.
+The Nurse role has only focused nursing permissions (`nursing.view`, `nursing.record_vitals`, `nursing.record_notes`, and `nursing.manage_tasks`). Active patient/clinical access still requires an active assignment. Historical access requires proof that the Patient was assigned to the current Nurse and returns only that Nurse's own care work, preventing a completed assignment from becoming permanent access to unrelated or future clinical data. The role has no generic patient-history/update, appointment mutation, consultation mutation, prescription, billing, pharmacy, laboratory, radiology, insurance, ambulance, staff, settings, or administrative permissions. Exact API role checks and the frontend route whitelist block cross-role and removed Nurse URLs.
 
 ### Pharmacist portal
 
@@ -680,7 +722,7 @@ The ORM models in `backend/app/models/all_models.py` are the current model sourc
 
 Central identity record.
 
-- Unique email and bcrypt password hash
+- Canonical lowercase/trimmed email, bcrypt password hash, and a generated `email_normalized` value protected by a global unique constraint
 - Role enum: patient, doctor, receptionist, admin, super admin, hospital manager, nurse, pharmacist, lab technician, radiologist, accountant, insurance officer, ambulance staff
 - Active and email-verification state
 - Hashed verification/reset tokens with expiration timestamps
@@ -699,14 +741,14 @@ Central identity record.
 
 ### `employees`
 
-- Required unique link to a receptionist `users` row
-- Designation, joining date, working shift
+- Required unique link to a non-Doctor staff `users` row; used by Hospital Manager, Receptionist, Nurse, Pharmacist, Lab Technician, Radiologist, Accountant, Insurance Officer, and Ambulance Staff accounts
+- Designation, nullable contact, joining date, and working shift
 - Status: active or inactive
 - `added_by` references the admin user that created the employee
 
 ### `employee_permissions`
 
-- References an employee
+- References a Receptionist employee profile
 - Stores four focused permission flags as integer columns used as booleans: registration, scheduling, check-in, and payment collection
 - `employee_id` is unique, so each receptionist employee has at most one permission row
 
@@ -716,10 +758,26 @@ Central identity record.
 - Appointment date, time, reason, status
 - Check-in and creation timestamps
 
+### `patient_vitals`
+
+- References the existing Patient, recording Nurse user, and optional Appointment
+- Stores supported vital measurements, notes, and a recording timestamp as append-only clinical history
+
+### `nursing_notes`
+
+- References the existing Patient, authoring Nurse user, and optional Appointment
+- Stores timestamped factual nursing observations separately from Doctor diagnosis and prescriptions
+
+### `nursing_tasks`
+
+- References the existing Patient, assigned Nurse user, and nullable creating Doctor for legacy compatibility
+- Stores task title/description, priority, status, optional due/completion times, and created/updated timestamps
+- `pending` and `in_progress` grant assignment-scoped patient access; `completed` and `cancelled` are historical only
+
 ### `prescriptions`
 
 - Required appointment foreign key
-- Diagnosis, one medicine string, dosage, notes, creation timestamp
+- Diagnosis, one medicine string, `TEXT` dosage/directions, notes, creation timestamp
 - The current structure supports one medicine/dosage pair per prescription row
 
 ### `billing`
@@ -758,7 +816,7 @@ Create `backend/.env` from `backend/.env.example`:
 DATABASE_URL=mysql+pymysql://root:root@localhost/hospital_management
 SECRET_KEY=replace-with-a-long-random-secret
 ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=1440
+ACCESS_TOKEN_EXPIRE_MINUTES=0
 FRONTEND_URL=http://localhost:3000
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
@@ -774,6 +832,7 @@ CELERY_RESULT_BACKEND=redis://localhost:6379/1
 Important details:
 
 - `DATABASE_URL` and `SECRET_KEY` are required; the backend no longer falls back to hard-coded credentials or an insecure JWT secret.
+- `ACCESS_TOKEN_EXPIRE_MINUTES=0` disables automatic JWT/cookie expiry for idle browser sessions. Use a positive minute count when a deployment requires timed sessions; live disabled-account and missing-profile checks still revoke access.
 - Docker Compose uses the same `SECRET_KEY` and `ALGORITHM` names as runtime settings.
 - Use a Gmail App Password rather than a normal Gmail password when Gmail SMTP is selected.
 - Secrets and local environment files are ignored by Git; `.env.example` is intentionally tracked.
@@ -884,12 +943,13 @@ These are current implementation facts, not completed features:
 - CORS uses the explicit comma-separated `CORS_ORIGINS` setting; production values still need deployment-specific review.
 - No rate limiting exists for login, verification resend, or password-reset requests.
 - There is no CSRF-specific protection for cookie-backed Next.js Server Actions beyond `SameSite=Lax` behavior and framework defaults.
-- Existing JWTs are checked against the current `users.is_active` value on every request; employee deactivation also deactivates the linked user.
-- Admin doctor deletion removes the doctor profile but not the linked user and may fail when appointments reference the doctor.
+- Default login JWTs do not expire automatically. Explicit logout deletes browser cookies but there is no server-side token denylist; a copied token remains usable until the account/profile is revoked or the signing key changes.
+- Existing JWTs are checked against the current `users.is_active` value on every request. Receptionist Employee-profile state and Doctor-profile existence are also checked, and employee deactivation deactivates the linked user.
+- Admin Doctor deletion disables the linked user and deletes the Doctor profile, but it can still fail when appointments or other foreign-key records reference that Doctor because no retention/cascade policy is defined.
 
 ### Data integrity and business rules
 
-- `database/schema.sql` is a legacy reference only and is no longer executed; the three-revision Alembic chain is authoritative.
+- `database/schema.sql` is a legacy reference only and is no longer executed; the 14-revision Alembic chain through `20260905_0014` is authoritative.
 - Core confirm/check-in/start/complete/cancel transitions are guarded, although a reusable state-machine abstraction is still absent.
 - Doctor slot conflicts are rejected for non-cancelled appointments.
 - Payment method is validated and repeat collection is idempotent for the original method.
@@ -904,12 +964,14 @@ These are current implementation facts, not completed features:
 - Several older frontend values still use `any`, weakening the benefit of strict TypeScript.
 - Most errors are reduced to generic messages, and some page-level data requests throw without a local error boundary.
 - Some older screens still poll every five seconds. Doctor workload pages poll every 30 seconds and pause while the tab is hidden.
+- Live in-app notifications have a WebSocket plus polling fallback. Email, SMS, and WhatsApp provider execution remains a fail-closed adapter placeholder and requires deployment credentials plus a real provider integration.
 - Generated/scaffolding scripts remain mixed with maintained application code.
 - Some source text shows mojibake for currency/symbol characters (for example `â‚¹`), indicating encoding cleanup is needed.
+- Current destructive UI actions (Doctor deletion and dynamic role-grant removal) require confirmation through `ConfirmDeleteForm`; future delete actions must adopt the same component explicitly.
 
 ### Quality and operations
 
-- Backend tests cover all role authentication, permission isolation, disabled sessions, role audit, migration preservation/refusal, Manager read-only operational scope and exact-role denial, Doctor appointment/patient assignment scope, consultation transitions and billing idempotency, slot conflicts, exact-role/assignment-scoped Nurse and Lab workflows, Pharmacist prescription/stock/dispensing safety, Radiologist order/report assignment and finalization, Accountant financial integrity, Insurance Officer claim integrity, and Ambulance Staff vehicle/request/trip ownership, transition, and audit integrity plus cross-role isolation. Full browser end-to-end coverage is still needed.
+- Backend tests cover all role authentication, non-expiring/default and explicitly expiring JWT creation, disabled/deleted-profile session revocation, permission isolation, staff contact/shift creation, Doctor deletion cleanup, Manager all-role directory visibility, role audit, migration preservation/refusal, Doctor assignment scope, consultation/billing idempotency, slot conflicts, and the exact-role enterprise workflows. Full browser end-to-end coverage is still needed.
 - No CI workflow is present.
 - Dependencies are mostly unpinned in `requirements.txt`; frontend also uses `lucide-react: latest`.
 - Explicit audit history and health/readiness endpoints are implemented. Production monitoring, backup automation, and a real outbound notification adapter remain outstanding.
@@ -917,7 +979,7 @@ These are current implementation facts, not completed features:
 
 ## 16. Recommended development priorities
 
-1. Add rate limits and a CSRF-focused review for public authentication and cookie-backed actions.
+1. Define the production session lifecycle for the current no-idle-expiry policy, including token rotation/revocation, then add rate limits and a CSRF-focused review for public authentication and cookie-backed actions.
 2. Implement the staged, data-preserving organization isolation design in `docs/organization-scoping-plan.md` before claiming true multi-hospital isolation.
 3. Build typed interactive create/update forms for the remaining API-first enterprise portal screens; the core Super Admin management screens now have forms and Server Actions.
 4. Add browser end-to-end tests for every role's complete journey.
@@ -931,23 +993,27 @@ At minimum, regression testing should cover:
 
 1. Patient registers, receives verification, verifies, logs in, and updates profile.
 2. Patient books only for self and can see only own appointments, prescriptions, and bills.
-3. Admin creates a doctor who can log in and see only assigned appointments.
-4. Admin creates a receptionist, toggles each permission, and backend access changes accordingly.
+3. Admin creates a Doctor with contact/working hours who can log in and see only assigned appointments; deleting that Doctor disables new and existing sessions and removes the staff-directory entry.
+4. Admin creates each non-administrator staff role with contact and an overall shift, then toggles each Receptionist page permission and observes the backend access change.
 5. Receptionist creates a walk-in patient, schedules an appointment, confirms/checks in, and cannot bypass revoked permissions.
 6. Assigned doctor completes consultation; prescription, completed appointment, and exactly one pending bill are committed atomically.
 7. Receptionist collects a pending bill once; patient sees the paid state and correct receipt.
 8. Admin dashboards and billing totals match database records.
 9. Expired, invalid, and reused verification/reset tokens are rejected.
-10. Disabled users and inactive employees cannot continue to use existing or new sessions.
+10. Disabled users, inactive Receptionists, and Doctor users without a Doctor profile cannot continue to use existing or new sessions even when the JWT has no automatic expiry.
 11. Super Admin creates and disables an Admin, resets the Admin password, manages an organization, setting, role grant, and feature flag, and each mutation is reflected in the UI and audit history without persisting password data in audit values.
 12. Insurance Officer creates a policy-backed invoice claim once, follows only valid submission/review/decision/settlement transitions, records required documents and decision reasons, and cannot access clinical or other departmental workflows.
 13. Ambulance Staff accepts one pending request with an assigned available vehicle, follows only assigned/en-route/arrived/transporting/completed transitions, sees no other staff member's owned trip, and releases the vehicle at completion.
+14. Doctor assigns an authorized Patient to an active Nurse; only that Nurse sees the active patient/appointment, appends vitals and an observation, moves the task `pending → in_progress → completed`, loses active patient access after the last task completes, and can still review only that Nurse's own immutable work from Patient History. The assigned Doctor sees the recorded nursing task, vitals, and observation in the Patient record.
+
+15. Patient books an appointment and the Patient, assigned Doctor, and active Receptionists receive role-scoped in-app notifications; a Doctor-assigned nursing task appears only for the selected Nurse, and read actions cannot modify another user's notification.
 
 ## 18. Current verification status
 
-- The working tree is based on branch `main` at `a76521a`; the authorization-separation changes are not yet committed.
-- Backend: 115 tests pass. Coverage includes role login, exact cross-role denial, previous clinical/operational workflows, assignment-private Lab and Radiologist orders, immutable finalized results/reports, Accountant and Insurance integrity, plus Ambulance Staff transport-only patient responses, vehicle ownership/availability, duplicate-safe assignment, staff-private request/trip access, guarded transitions, audit history, and migration preservation.
-- Frontend: 13 role-routing authorization tests and strict TypeScript checks pass; the optimized production build succeeds and contains exactly `/ambulance/home`, `/ambulance/requests`, `/ambulance/requests/[id]`, `/ambulance/trips`, and `/ambulance/vehicles` for the Ambulance Staff portal.
-- Alembic revision `20260901_0009` adds destination data, responsible trip staff, accepted timestamps, final request/trip/vehicle states, ownership indexes, and status-history references without inserting business records. Fresh and legacy migration tests pass, and the live MySQL database is verified at `20260901_0009 (head)`.
-- No default/demo Ambulance Staff, ambulance, request, trip, or patient data is created. Docker Compose backend, worker, frontend, MySQL, and Redis services were rebuilt/started; the backend readiness endpoint returns `200` and unauthenticated `/ambulance/home` access returns `307` to `/login`.
-- `npm ci` reports 8 dependency vulnerabilities (7 high, 1 critical), including a warning that pinned Next.js `14.2.5` should be upgraded to a patched release. Dependency upgrades remain a separate compatibility/security task.
+- The working tree is based on branch `main` at `c56a199`; the changes summarized in section 1.1 and this reconciled context file are not yet committed.
+- Backend: 186 tests pass with one third-party Starlette/httpx deprecation warning. This includes migration, authorization, all-role login, default no-expiry JWT, explicit-expiry JWT, deleted/disabled session revocation, all-role staff contact/shift, Manager directory, the complete Doctor-to-Nurse assignment/history journey, role-scoped appointment/task notifications, notification ownership/read behavior, short-lived socket-ticket claims, and existing clinical/enterprise workflow coverage.
+- Frontend: all 13 role-routing authorization tests pass. Strict TypeScript, ESLint, and the optimized Next.js production build also pass; the authorization test command emits only Node's module-type performance warning.
+- The code migration head is guarded additive revision `20260905_0014`, which adds nullable, indexed, Doctor-referenced `nursing_tasks.created_by_doctor_id`; fresh and legacy migration tests pass. The configured local MySQL database still reports Alembic revision `20260826_0002`, while both `employees.contact` and the complete `created_by_doctor_id` column/index/foreign-key change have been applied and verified separately. The remaining migration chain must be reconciled before treating that database as code-head.
+- Local backend `.env` and tracked `.env.example` use `ACCESS_TOKEN_EXPIRE_MINUTES=0`. Existing cookies/tokens created before this change require a fresh login after restarting the backend/frontend processes.
+- No default/demo Ambulance Staff, ambulance, request, trip, or patient data is created. Docker Compose services were not rebuilt during this latest reconciliation.
+- The last recorded `npm ci` audit reported 8 dependency vulnerabilities (7 high, 1 critical), including a warning that pinned Next.js `14.2.5` should be upgraded to a patched release. Dependency upgrades remain a separate compatibility/security task.

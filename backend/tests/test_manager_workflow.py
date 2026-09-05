@@ -243,6 +243,18 @@ def test_manager_doctor_and_staff_views_are_read_only_operational_summaries(
     client, db, create_user, login
 ):
     records = create_operational_records(db, create_user)
+    additional_roles = {
+        "pharmacist",
+        "lab_technician",
+        "radiologist",
+        "accountant",
+        "insurance_officer",
+        "ambulance_staff",
+    }
+    for role in additional_roles:
+        create_user(role, email=f"manager-{role}@example.com")
+    create_user("super_admin", email="manager-super-admin@example.com")
+    create_user("patient", email="manager-patient@example.com")
     auth = headers(login(records["manager"]))
     doctors = client.get("/manager/doctors", headers=auth)
     staff = client.get("/manager/staff", headers=auth)
@@ -252,8 +264,39 @@ def test_manager_doctor_and_staff_views_are_read_only_operational_summaries(
     assert doctors.json()[0]["department_name"] == "General Medicine"
     assert staff.status_code == 200
     staff_roles = {member["role"] for member in staff.json()}
-    assert {"receptionist", "nurse"}.issubset(staff_roles)
+    assert staff_roles == {
+        "hospital_manager",
+        "doctor",
+        "receptionist",
+        "nurse",
+        *additional_roles,
+    }
+    doctor_staff = next(member for member in staff.json() if member["role"] == "doctor")
+    assert doctor_staff["designation"] == "General Medicine"
+    assert doctor_staff["department_name"] == "General Medicine"
+    assert doctor_staff["shift_start"] == "08:00:00"
+    assert {"admin", "super_admin", "patient"}.isdisjoint(staff_roles)
     assert all("email" not in member for member in staff.json())
+
+
+def test_manager_staff_view_shows_shift_assigned_by_admin_for_other_roles(
+    client, db, create_user, login
+):
+    manager = create_user("hospital_manager")
+    admin = create_user("admin")
+    nurse = create_user("nurse")
+
+    updated = client.patch(
+        f"/admin/staff/{nurse.id}/shift",
+        json={"shift_start": "22:00:00", "shift_end": "06:00:00"},
+        headers=headers(login(admin)),
+    )
+    staff = client.get("/manager/staff", headers=headers(login(manager)))
+
+    assert updated.status_code == 200
+    nurse_summary = next(item for item in staff.json() if item["id"] == nurse.id)
+    assert nurse_summary["shift_start"] == "22:00:00"
+    assert nurse_summary["shift_end"] == "06:00:00"
 
 
 def test_manager_cannot_mutate_clinical_financial_staff_or_department_data(

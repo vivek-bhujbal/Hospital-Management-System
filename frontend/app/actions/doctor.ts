@@ -110,6 +110,47 @@ export async function completeConsultationAction(formData: FormData) {
   redirect('/doctor/home')
 }
 
+export async function assignNursingTaskAction(formData: FormData) {
+  const patientId = Number(formValue(formData, 'patient_id'))
+  const nurseId = Number(formValue(formData, 'assigned_nurse_id'))
+  const taskType = formValue(formData, 'task_type')
+  const description = formValue(formData, 'description')
+  const priority = formValue(formData, 'priority') || 'medium'
+  const dueAt = formValue(formData, 'due_at') || null
+  if (!Number.isInteger(patientId) || patientId <= 0 || !Number.isInteger(nurseId) || nurseId <= 0) {
+    return { error: 'Select a valid patient and active nurse.' }
+  }
+  if (!taskType || !description) {
+    return { error: 'Task title and description are required.' }
+  }
+
+  const res = await fetch(`${API_URL}/doctors/nursing-tasks`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    cache: 'no-store',
+    body: JSON.stringify({
+      patient_id: patientId,
+      assigned_nurse_id: nurseId,
+      task_type: taskType,
+      description,
+      priority,
+      due_at: dueAt,
+      status: 'pending',
+    }),
+  })
+  if (!res.ok) return { error: await responseError(res, 'Unable to assign nursing task.') }
+
+  revalidatePath(`/doctor/patients/${patientId}`)
+  revalidatePath('/doctor/consultation')
+  revalidatePath('/nurse/home')
+  revalidatePath('/nurse/patients')
+  revalidatePath('/nurse/appointments')
+  revalidatePath('/nurse/tasks')
+  revalidatePath('/nurse/history')
+  revalidatePath(`/nurse/history/${patientId}`)
+  return { success: true }
+}
+
 export async function updateDoctorProfileAction(formData: FormData) {
   const payload = {
     name: formData.get('name'),

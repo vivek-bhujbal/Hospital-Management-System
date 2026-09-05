@@ -9,7 +9,7 @@ from app.core.permissions import Permission
 from app.core.roles import UserRole
 from app.database import get_db
 from app.models.all_models import (
-    Appointment, Doctor, NursingNote, NursingTask, Patient, PatientVital,
+    Appointment, Department, Doctor, NursingNote, NursingTask, Patient, PatientVital,
     Prescription, User,
 )
 from app.schemas.all_schemas import (
@@ -32,6 +32,7 @@ TASK_TRANSITIONS = {
     "completed": set(),
     "cancelled": set(),
 }
+PRIORITY_RANK = {"low": 0, "medium": 1, "high": 2, "emergency": 3}
 
 
 def _patient_or_404(db: Session, patient_id: int) -> Patient:
@@ -61,6 +62,24 @@ def _require_nurse_patient_assignment(db: Session, nurse_id: int, patient_id: in
         raise HTTPException(status_code=403, detail="Patient is not assigned to this nurse")
 
 
+def _require_nurse_patient_history(db: Session, nurse_id: int, patient_id: int) -> None:
+    assigned = db.query(NursingTask.id).filter(
+        NursingTask.patient_id == patient_id,
+        NursingTask.assigned_nurse_id == nurse_id,
+    ).first()
+    if not assigned:
+        raise HTTPException(status_code=403, detail="No nursing history exists for this patient")
+
+
+def _require_nurse_patient_history(db: Session, nurse_id: int, patient_id: int) -> None:
+    assigned = db.query(NursingTask.id).filter(
+        NursingTask.patient_id == patient_id,
+        NursingTask.assigned_nurse_id == nurse_id,
+    ).first()
+    if not assigned:
+        raise HTTPException(status_code=403, detail="No nursing history exists for this patient")
+
+
 def _validate_appointment_patient(db: Session, appointment_id: int | None, patient_id: int) -> None:
     if appointment_id is None:
         return
@@ -69,11 +88,19 @@ def _validate_appointment_patient(db: Session, appointment_id: int | None, patie
         raise HTTPException(status_code=400, detail="Appointment does not belong to this patient")
 
 
-def _task_payload(task: NursingTask, patient_name: str) -> dict:
+def _task_payload(
+    task: NursingTask,
+    patient_name: str,
+    doctor_name: str | None = None,
+    *,
+    patient_access_active: bool = True,
+) -> dict:
     return {
         "id": task.id,
         "patient_id": task.patient_id,
         "patient_name": patient_name,
+        "created_by_doctor_id": task.created_by_doctor_id,
+        "doctor_name": doctor_name or "Legacy task",
         "assigned_nurse_id": task.assigned_nurse_id,
         "task_type": task.task_type,
         "description": task.description,
@@ -82,6 +109,8 @@ def _task_payload(task: NursingTask, patient_name: str) -> dict:
         "due_at": task.due_at,
         "completed_at": task.completed_at,
         "created_at": task.created_at,
+        "updated_at": task.updated_at,
+        "patient_access_active": patient_access_active,
     }
 
 
@@ -89,6 +118,7 @@ def _appointment_payload(
     appointment: Appointment,
     patient_name: str,
     doctor_name: str,
+    department_name: str | None,
     tasks: list[NursingTask],
 ) -> dict:
     return {
@@ -97,6 +127,7 @@ def _appointment_payload(
         "patient_name": patient_name,
         "doctor_id": appointment.doctor_id,
         "doctor_name": doctor_name,
+        "department_name": department_name,
         "appt_date": appointment.appt_date,
         "appt_time": appointment.appt_time,
         "reason": appointment.reason,
@@ -136,22 +167,21 @@ def get_nurse_dashboard(
     ).order_by(Appointment.appt_date, Appointment.appt_time).all() if patient_ids else []
     today_appointments = [item for item in appointments if item.appt_date == today]
     today_patient_ids = {item.patient_id for item in today_appointments}
-    due_today_ids = {
-        task.patient_id for task in tasks
-        if task.due_at is not None and task.due_at.date() == today
-    }
     urgent_tasks = sorted(
         (task for task in tasks if task.priority in ("high", "emergency")),
         key=lambda item: (item.priority != "emergency", item.due_at or datetime.max),
     )
+    doctor_ids = {item.doctor_id for item in appointments} | {
+        item.created_by_doctor_id for item in tasks if item.created_by_doctor_id
+    }
     doctors = {
         doctor.id: doctor.name
         for doctor in db.query(Doctor).filter(
-            Doctor.id.in_({item.doctor_id for item in appointments}),
+            Doctor.id.in_(doctor_ids),
         ).all()
-    } if appointments else {}
+    } if doctor_ids else {}
     return {
-        "today_assigned_patients": len(today_patient_ids | due_today_ids),
+        "today_assigned_patients": len(patient_ids),
         "waiting_patients": len({
             item.patient_id for item in today_appointments
             if item.status in ("confirmed", "checked_in")
@@ -160,7 +190,7 @@ def get_nurse_dashboard(
             task.patient_id for task in tasks
             if "vital" in (task.task_type or "").lower()
         }),
-        "patients_requiring_tasks": len(patient_ids),
+        "patients_requiring_tasks": sum(task.status == "pending" for task in tasks),
         "active_tasks": len(tasks),
         "urgent_alerts": [
             {
@@ -188,6 +218,354 @@ def get_nurse_dashboard(
     }
 
 
+@router.get("/history")
+def get_patient_history_index(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(Permission.nursing_view)),
+):
+    tasks = db.query(NursingTask).filter(
+        NursingTask.assigned_nurse_id == current_user.id,
+    ).order_by(NursingTask.created_at.desc()).all()
+    patient_ids = sorted({task.patient_id for task in tasks})
+    if not patient_ids:
+        return []
+
+    patients = {
+        patient.id: patient
+        for patient in db.query(Patient).filter(Patient.id.in_(patient_ids)).all()
+    }
+    vitals = db.query(PatientVital).filter(
+        PatientVital.patient_id.in_(patient_ids),
+        PatientVital.recorded_by == current_user.id,
+    ).all()
+    notes = db.query(NursingNote).filter(
+        NursingNote.patient_id.in_(patient_ids),
+        NursingNote.nurse_id == current_user.id,
+    ).all()
+    tasks_by_patient: dict[int, list[NursingTask]] = {}
+    vitals_by_patient: dict[int, list[PatientVital]] = {}
+    notes_by_patient: dict[int, list[NursingNote]] = {}
+    for task in tasks:
+        tasks_by_patient.setdefault(task.patient_id, []).append(task)
+    for vital in vitals:
+        vitals_by_patient.setdefault(vital.patient_id, []).append(vital)
+    for note in notes:
+        notes_by_patient.setdefault(note.patient_id, []).append(note)
+
+    response = []
+    for patient_id in patient_ids:
+        patient = patients.get(patient_id)
+        if not patient:
+            continue
+        patient_tasks = tasks_by_patient.get(patient_id, [])
+        patient_vitals = vitals_by_patient.get(patient_id, [])
+        patient_notes = notes_by_patient.get(patient_id, [])
+        activity_times = [
+            value for value in (
+                *[task.completed_at or task.updated_at or task.created_at for task in patient_tasks],
+                *[vital.recorded_at for vital in patient_vitals],
+                *[note.created_at for note in patient_notes],
+            ) if value is not None
+        ]
+        latest_task = patient_tasks[0]
+        response.append({
+            "patient_id": patient.id,
+            "patient_name": patient.name,
+            "contact": patient.contact,
+            "blood_group": patient.blood_group,
+            "task_count": len(patient_tasks),
+            "completed_task_count": sum(task.status == "completed" for task in patient_tasks),
+            "active_task_count": sum(task.status in ACTIVE_TASK_STATUSES for task in patient_tasks),
+            "vital_count": len(patient_vitals),
+            "note_count": len(patient_notes),
+            "latest_task_status": latest_task.status,
+            "latest_task_priority": latest_task.priority,
+            "last_activity_at": max(activity_times) if activity_times else None,
+        })
+    return sorted(
+        response,
+        key=lambda item: item["last_activity_at"] or datetime.min,
+        reverse=True,
+    )
+
+
+@router.get("/history/{patient_id}")
+def get_patient_work_history(
+    patient_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(Permission.nursing_view)),
+):
+    patient = _patient_or_404(db, patient_id)
+    _require_nurse_patient_history(db, current_user.id, patient_id)
+    tasks = db.query(NursingTask).filter(
+        NursingTask.patient_id == patient_id,
+        NursingTask.assigned_nurse_id == current_user.id,
+    ).order_by(NursingTask.created_at.desc()).all()
+    vitals = db.query(PatientVital).filter(
+        PatientVital.patient_id == patient_id,
+        PatientVital.recorded_by == current_user.id,
+    ).order_by(PatientVital.recorded_at.desc()).all()
+    notes = db.query(NursingNote).filter(
+        NursingNote.patient_id == patient_id,
+        NursingNote.nurse_id == current_user.id,
+    ).order_by(NursingNote.created_at.desc()).all()
+    doctor_ids = {task.created_by_doctor_id for task in tasks if task.created_by_doctor_id}
+    doctors = {
+        doctor.id: doctor.name
+        for doctor in db.query(Doctor).filter(Doctor.id.in_(doctor_ids)).all()
+    } if doctor_ids else {}
+    appointment_ids = {
+        item for item in (
+            *[vital.appointment_id for vital in vitals],
+            *[note.appointment_id for note in notes],
+        ) if item is not None
+    }
+    appointments = db.query(Appointment).filter(
+        Appointment.id.in_(appointment_ids),
+        Appointment.patient_id == patient_id,
+    ).order_by(Appointment.appt_date.desc(), Appointment.appt_time.desc()).all() if appointment_ids else []
+    appointment_doctor_ids = {appointment.doctor_id for appointment in appointments}
+    appointment_doctors = {
+        doctor.id: doctor.name
+        for doctor in db.query(Doctor).filter(Doctor.id.in_(appointment_doctor_ids)).all()
+    } if appointment_doctor_ids else {}
+    return {
+        "patient": {
+            "id": patient.id,
+            "name": patient.name,
+            "age": patient.age,
+            "gender": patient.gender,
+            "contact": patient.contact,
+            "blood_group": patient.blood_group,
+        },
+        "tasks": [
+            _task_payload(
+                task,
+                patient.name,
+                doctors.get(task.created_by_doctor_id) if task.created_by_doctor_id else None,
+                patient_access_active=task.status in ACTIVE_TASK_STATUSES,
+            )
+            for task in tasks
+        ],
+        "vitals": [
+            {
+                "id": vital.id,
+                "patient_id": vital.patient_id,
+                "appointment_id": vital.appointment_id,
+                "temperature": vital.temperature,
+                "blood_pressure_systolic": vital.blood_pressure_systolic,
+                "blood_pressure_diastolic": vital.blood_pressure_diastolic,
+                "pulse": vital.pulse,
+                "respiratory_rate": vital.respiratory_rate,
+                "oxygen_saturation": vital.oxygen_saturation,
+                "weight": vital.weight,
+                "height": vital.height,
+                "notes": vital.notes,
+                "recorded_by": vital.recorded_by,
+                "recorded_by_name": current_user.name,
+                "recorded_at": vital.recorded_at,
+            }
+            for vital in vitals
+        ],
+        "nursing_notes": [
+            {
+                "id": note.id,
+                "appointment_id": note.appointment_id,
+                "note": note.note,
+                "nurse_id": note.nurse_id,
+                "nurse_name": current_user.name,
+                "created_at": note.created_at,
+            }
+            for note in notes
+        ],
+        "appointments": [
+            {
+                "id": appointment.id,
+                "doctor_name": appointment_doctors.get(appointment.doctor_id, "Unknown doctor"),
+                "appt_date": appointment.appt_date,
+                "appt_time": appointment.appt_time,
+                "reason": appointment.reason,
+                "status": appointment.status,
+            }
+            for appointment in appointments
+        ],
+    }
+
+
+@router.get("/history")
+def get_patient_history_index(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(Permission.nursing_view)),
+):
+    tasks = db.query(NursingTask).filter(
+        NursingTask.assigned_nurse_id == current_user.id,
+    ).order_by(NursingTask.created_at.desc()).all()
+    patient_ids = sorted({task.patient_id for task in tasks})
+    if not patient_ids:
+        return []
+
+    patients = {
+        patient.id: patient
+        for patient in db.query(Patient).filter(Patient.id.in_(patient_ids)).all()
+    }
+    vitals = db.query(PatientVital).filter(
+        PatientVital.patient_id.in_(patient_ids),
+        PatientVital.recorded_by == current_user.id,
+    ).all()
+    notes = db.query(NursingNote).filter(
+        NursingNote.patient_id.in_(patient_ids),
+        NursingNote.nurse_id == current_user.id,
+    ).all()
+    tasks_by_patient: dict[int, list[NursingTask]] = {}
+    vitals_by_patient: dict[int, list[PatientVital]] = {}
+    notes_by_patient: dict[int, list[NursingNote]] = {}
+    for task in tasks:
+        tasks_by_patient.setdefault(task.patient_id, []).append(task)
+    for vital in vitals:
+        vitals_by_patient.setdefault(vital.patient_id, []).append(vital)
+    for note in notes:
+        notes_by_patient.setdefault(note.patient_id, []).append(note)
+
+    response = []
+    for patient_id in patient_ids:
+        patient = patients.get(patient_id)
+        if not patient:
+            continue
+        patient_tasks = tasks_by_patient.get(patient_id, [])
+        patient_vitals = vitals_by_patient.get(patient_id, [])
+        patient_notes = notes_by_patient.get(patient_id, [])
+        activity_times = [
+            value for value in (
+                *[task.completed_at or task.updated_at or task.created_at for task in patient_tasks],
+                *[vital.recorded_at for vital in patient_vitals],
+                *[note.created_at for note in patient_notes],
+            ) if value is not None
+        ]
+        latest_task = patient_tasks[0]
+        response.append({
+            "patient_id": patient.id,
+            "patient_name": patient.name,
+            "contact": patient.contact,
+            "blood_group": patient.blood_group,
+            "task_count": len(patient_tasks),
+            "completed_task_count": sum(task.status == "completed" for task in patient_tasks),
+            "active_task_count": sum(task.status in ACTIVE_TASK_STATUSES for task in patient_tasks),
+            "vital_count": len(patient_vitals),
+            "note_count": len(patient_notes),
+            "latest_task_status": latest_task.status,
+            "latest_task_priority": latest_task.priority,
+            "last_activity_at": max(activity_times) if activity_times else None,
+        })
+    return sorted(
+        response,
+        key=lambda item: item["last_activity_at"] or datetime.min,
+        reverse=True,
+    )
+
+
+@router.get("/history/{patient_id}")
+def get_patient_work_history(
+    patient_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(Permission.nursing_view)),
+):
+    patient = _patient_or_404(db, patient_id)
+    _require_nurse_patient_history(db, current_user.id, patient_id)
+    tasks = db.query(NursingTask).filter(
+        NursingTask.patient_id == patient_id,
+        NursingTask.assigned_nurse_id == current_user.id,
+    ).order_by(NursingTask.created_at.desc()).all()
+    vitals = db.query(PatientVital).filter(
+        PatientVital.patient_id == patient_id,
+        PatientVital.recorded_by == current_user.id,
+    ).order_by(PatientVital.recorded_at.desc()).all()
+    notes = db.query(NursingNote).filter(
+        NursingNote.patient_id == patient_id,
+        NursingNote.nurse_id == current_user.id,
+    ).order_by(NursingNote.created_at.desc()).all()
+    doctor_ids = {task.created_by_doctor_id for task in tasks if task.created_by_doctor_id}
+    doctors = {
+        doctor.id: doctor.name
+        for doctor in db.query(Doctor).filter(Doctor.id.in_(doctor_ids)).all()
+    } if doctor_ids else {}
+    appointment_ids = {
+        item for item in (
+            *[vital.appointment_id for vital in vitals],
+            *[note.appointment_id for note in notes],
+        ) if item is not None
+    }
+    appointments = db.query(Appointment).filter(
+        Appointment.id.in_(appointment_ids),
+        Appointment.patient_id == patient_id,
+    ).order_by(Appointment.appt_date.desc(), Appointment.appt_time.desc()).all() if appointment_ids else []
+    appointment_doctor_ids = {appointment.doctor_id for appointment in appointments}
+    appointment_doctors = {
+        doctor.id: doctor.name
+        for doctor in db.query(Doctor).filter(Doctor.id.in_(appointment_doctor_ids)).all()
+    } if appointment_doctor_ids else {}
+    return {
+        "patient": {
+            "id": patient.id,
+            "name": patient.name,
+            "age": patient.age,
+            "gender": patient.gender,
+            "contact": patient.contact,
+            "blood_group": patient.blood_group,
+        },
+        "tasks": [
+            _task_payload(
+                task,
+                patient.name,
+                doctors.get(task.created_by_doctor_id) if task.created_by_doctor_id else None,
+                patient_access_active=task.status in ACTIVE_TASK_STATUSES,
+            )
+            for task in tasks
+        ],
+        "vitals": [
+            {
+                "id": vital.id,
+                "patient_id": vital.patient_id,
+                "appointment_id": vital.appointment_id,
+                "temperature": vital.temperature,
+                "blood_pressure_systolic": vital.blood_pressure_systolic,
+                "blood_pressure_diastolic": vital.blood_pressure_diastolic,
+                "pulse": vital.pulse,
+                "respiratory_rate": vital.respiratory_rate,
+                "oxygen_saturation": vital.oxygen_saturation,
+                "weight": vital.weight,
+                "height": vital.height,
+                "notes": vital.notes,
+                "recorded_by": vital.recorded_by,
+                "recorded_by_name": current_user.name,
+                "recorded_at": vital.recorded_at,
+            }
+            for vital in vitals
+        ],
+        "nursing_notes": [
+            {
+                "id": note.id,
+                "appointment_id": note.appointment_id,
+                "note": note.note,
+                "nurse_id": note.nurse_id,
+                "nurse_name": current_user.name,
+                "created_at": note.created_at,
+            }
+            for note in notes
+        ],
+        "appointments": [
+            {
+                "id": appointment.id,
+                "doctor_name": appointment_doctors.get(appointment.doctor_id, "Unknown doctor"),
+                "appt_date": appointment.appt_date,
+                "appt_time": appointment.appt_time,
+                "reason": appointment.reason,
+                "status": appointment.status,
+            }
+            for appointment in appointments
+        ],
+    }
+
+
 @router.get("/patients")
 def get_patients(
     db: Session = Depends(get_db),
@@ -203,10 +581,30 @@ def get_patients(
             NursingTask.patient_id == patient.id,
             NursingTask.assigned_nurse_id == current_user.id,
             NursingTask.status.in_(ACTIVE_TASK_STATUSES),
-        ).all()
+        ).order_by(NursingTask.created_at.desc()).all()
         appointment = db.query(Appointment).filter(
             Appointment.patient_id == patient.id,
         ).order_by(Appointment.appt_date.desc(), Appointment.appt_time.desc()).first()
+        latest_vital = db.query(PatientVital).filter(
+            PatientVital.patient_id == patient.id,
+        ).order_by(PatientVital.recorded_at.desc()).first()
+        primary_task = max(
+            active_tasks,
+            key=lambda task: (
+                task.status == "in_progress",
+                PRIORITY_RANK.get(task.priority, -1),
+                task.created_at or datetime.min,
+            ),
+        )
+        assigned_doctor = (
+            db.get(Doctor, primary_task.created_by_doctor_id)
+            if primary_task.created_by_doctor_id
+            else db.get(Doctor, appointment.doctor_id) if appointment else None
+        )
+        highest_priority = max(
+            (task.priority for task in active_tasks),
+            key=lambda priority: PRIORITY_RANK.get(priority, -1),
+        )
         response.append({
             "id": patient.id,
             "name": patient.name,
@@ -216,6 +614,12 @@ def get_patients(
             "blood_group": patient.blood_group,
             "active_task_count": len(active_tasks),
             "urgent_task_count": sum(task.priority in ("high", "emergency") for task in active_tasks),
+            "highest_task_priority": highest_priority,
+            "current_task_status": primary_task.status,
+            "assigned_doctor_name": assigned_doctor.name if assigned_doctor else None,
+            "latest_vital_at": latest_vital.recorded_at if latest_vital else None,
+            "latest_pulse": latest_vital.pulse if latest_vital else None,
+            "latest_oxygen_saturation": latest_vital.oxygen_saturation if latest_vital else None,
             "latest_appointment_date": appointment.appt_date if appointment else None,
             "latest_appointment_status": appointment.status if appointment else None,
         })
@@ -247,12 +651,19 @@ def get_patient_detail(
     notes = db.query(NursingNote).filter(
         NursingNote.patient_id == patient_id,
     ).order_by(NursingNote.created_at.desc()).all()
-    doctors = {
-        doctor.id: doctor.name
-        for doctor in db.query(Doctor).filter(
-            Doctor.id.in_({item.doctor_id for item in appointments}),
+    doctor_ids = {item.doctor_id for item in appointments} | {
+        item.created_by_doctor_id for item in tasks if item.created_by_doctor_id
+    }
+    doctor_records = db.query(Doctor).filter(Doctor.id.in_(doctor_ids)).all() if doctor_ids else []
+    doctors = {doctor.id: doctor.name for doctor in doctor_records}
+    doctor_departments = {doctor.id: doctor.department_id for doctor in doctor_records}
+    department_ids = {item for item in doctor_departments.values() if item}
+    departments = {
+        department.department_id: department.name
+        for department in db.query(Department).filter(
+            Department.department_id.in_(department_ids),
         ).all()
-    } if appointments else {}
+    } if department_ids else {}
     clinical_user_ids = {item.recorded_by for item in vitals} | {item.nurse_id for item in notes}
     users = {
         user.id: user.name
@@ -271,6 +682,7 @@ def get_patient_detail(
             {
                 "id": item.id,
                 "doctor_name": doctors.get(item.doctor_id, "Unknown doctor"),
+                "department_name": departments.get(doctor_departments.get(item.doctor_id)),
                 "appt_date": item.appt_date,
                 "appt_time": item.appt_time,
                 "reason": item.reason,
@@ -321,7 +733,14 @@ def get_patient_detail(
             }
             for item in notes
         ],
-        "tasks": [_task_payload(item, patient.name) for item in tasks],
+        "tasks": [
+            _task_payload(
+                item,
+                patient.name,
+                doctors.get(item.created_by_doctor_id) if item.created_by_doctor_id else None,
+            )
+            for item in tasks
+        ],
     }
 
 
@@ -340,11 +759,20 @@ def get_appointments(
         patient.id: patient.name
         for patient in db.query(Patient).filter(Patient.id.in_(patient_ids)).all()
     }
-    doctors = {
-        doctor.id: doctor.name
-        for doctor in db.query(Doctor).filter(
-            Doctor.id.in_({item.doctor_id for item in appointments}),
+    doctor_records = db.query(Doctor).filter(
+        Doctor.id.in_({item.doctor_id for item in appointments}),
+    ).all()
+    doctors = {doctor.id: doctor.name for doctor in doctor_records}
+    department_ids = {doctor.department_id for doctor in doctor_records if doctor.department_id}
+    departments = {
+        department.department_id: department.name
+        for department in db.query(Department).filter(
+            Department.department_id.in_(department_ids),
         ).all()
+    } if department_ids else {}
+    doctor_departments = {
+        doctor.id: departments.get(doctor.department_id)
+        for doctor in doctor_records
     }
     tasks = db.query(NursingTask).filter(
         NursingTask.assigned_nurse_id == current_user.id,
@@ -358,6 +786,7 @@ def get_appointments(
             item,
             patients.get(item.patient_id, "Unknown patient"),
             doctors.get(item.doctor_id, "Unknown doctor"),
+            doctor_departments.get(item.doctor_id),
             tasks_by_patient.get(item.patient_id, []),
         )
         for item in appointments
@@ -478,7 +907,21 @@ def get_nursing_tasks(
         patient.id: patient.name
         for patient in db.query(Patient).filter(Patient.id.in_(patient_ids)).all()
     } if patient_ids else {}
-    return [_task_payload(item, patients.get(item.patient_id, "Unknown patient")) for item in tasks]
+    doctor_ids = {item.created_by_doctor_id for item in tasks if item.created_by_doctor_id}
+    doctors = {
+        doctor.id: doctor.name
+        for doctor in db.query(Doctor).filter(Doctor.id.in_(doctor_ids)).all()
+    } if doctor_ids else {}
+    active_patient_ids = set(_assigned_patient_ids(db, current_user.id))
+    return [
+        _task_payload(
+            item,
+            patients.get(item.patient_id, "Unknown patient"),
+            doctors.get(item.created_by_doctor_id) if item.created_by_doctor_id else None,
+            patient_access_active=item.patient_id in active_patient_ids,
+        )
+        for item in tasks
+    ]
 
 
 @router.put("/tasks/{task_id}", response_model=NursingTaskResponse)

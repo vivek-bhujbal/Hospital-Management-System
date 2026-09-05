@@ -1,3 +1,7 @@
+from datetime import time
+
+import pytest
+
 from app.models.all_models import AuditLog, Doctor, Employee, EmployeePermission, User
 
 
@@ -189,6 +193,144 @@ def test_doctor_and_receptionist_profiles_are_created_transactionally(
     assert permissions.can_schedule_appointment == 0
     assert permissions.can_checkin_patient == 0
     assert permissions.can_collect_billing == 0
+
+
+@pytest.mark.parametrize("role", [
+    "hospital_manager",
+    "doctor",
+    "receptionist",
+    "nurse",
+    "pharmacist",
+    "lab_technician",
+    "radiologist",
+    "accountant",
+    "insurance_officer",
+    "ambulance_staff",
+])
+def test_staff_contact_is_saved_for_every_creatable_role(
+    client, db, create_user, login, role
+):
+    admin = create_user("admin")
+    payload = account_payload(role, f"contact-{role}") | {"contact": "+91-9876543210"}
+    if role == "doctor":
+        payload |= {
+            "specialization": "General Medicine",
+            "consultation_fee": "900.00",
+        }
+    elif role == "receptionist":
+        payload["designation"] = "Receptionist"
+
+    response = client.post(
+        "/admin/staff",
+        json=payload,
+        headers=headers(login(admin)),
+    )
+
+    assert response.status_code == 201
+    staff_user = db.query(User).filter_by(email=payload["email"]).one()
+    profile = (
+        db.query(Doctor).filter_by(user_id=staff_user.id).one()
+        if role == "doctor"
+        else db.query(Employee).filter_by(user_id=staff_user.id).one()
+    )
+    assert profile.contact == "+91-9876543210"
+    details = client.get(
+        f"/admin/staff/{staff_user.id}",
+        headers=headers(login(admin)),
+    )
+    assert details.status_code == 200
+    assert details.json()["profile"]["contact"] == "+91-9876543210"
+
+
+def test_deleting_doctor_revokes_login_and_removes_staff_directory_record(
+    client, db, create_user, login
+):
+    admin = create_user("admin")
+    manager = create_user("hospital_manager")
+    payload = account_payload("doctor", "deleted-doctor") | {
+        "specialization": "Cardiology",
+        "consultation_fee": "1250.00",
+        "timing_start": "09:00:00",
+        "timing_end": "17:00:00",
+    }
+    admin_auth = headers(login(admin))
+    created = client.post("/admin/staff", json=payload, headers=admin_auth)
+    assert created.status_code == 201
+
+    doctor_user = db.query(User).filter_by(email=payload["email"]).one()
+    doctor = db.query(Doctor).filter_by(user_id=doctor_user.id).one()
+    doctor_token = login(doctor_user)
+
+    deleted = client.delete(f"/admin/doctors/{doctor.id}", headers=admin_auth)
+
+    assert deleted.status_code == 200
+    db.refresh(doctor_user)
+    assert doctor_user.is_active is False
+    assert db.query(Doctor).filter_by(id=doctor.id).first() is None
+    assert client.post(
+        "/auth/login",
+        json={"email": payload["email"], "password": payload["password"]},
+    ).status_code == 403
+    assert client.get(
+        "/auth/me", headers=headers(doctor_token),
+    ).status_code == 403
+
+    admin_staff = client.get("/admin/staff", headers=admin_auth)
+    manager_staff = client.get("/manager/staff", headers=headers(login(manager)))
+    assert doctor_user.id not in {item["id"] for item in admin_staff.json()}
+    assert doctor_user.id not in {item["id"] for item in manager_staff.json()}
+
+
+@pytest.mark.parametrize("role", [
+    "hospital_manager",
+    "doctor",
+    "receptionist",
+    "nurse",
+    "pharmacist",
+    "lab_technician",
+    "radiologist",
+    "accountant",
+    "insurance_officer",
+    "ambulance_staff",
+])
+def test_admin_can_assign_working_shift_to_every_staff_role(
+    client, db, create_user, login, role
+):
+    admin = create_user("admin")
+    staff = create_user(role)
+    if role == "doctor":
+        db.add(Doctor(
+            user_id=staff.id,
+            name=staff.name,
+            specialization="General Medicine",
+            status="active",
+        ))
+        db.commit()
+
+    response = client.patch(
+        f"/admin/staff/{staff.id}/shift",
+        json={"shift_start": "08:00:00", "shift_end": "16:00:00"},
+        headers=headers(login(admin)),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["profile"]["type"] == (
+        "doctor" if role == "doctor"
+        else "receptionist" if role == "receptionist"
+        else "employee"
+    )
+    if role == "doctor":
+        profile = db.query(Doctor).filter_by(user_id=staff.id).one()
+        assert profile.timing_start == time(8, 0)
+        assert profile.timing_end == time(16, 0)
+    else:
+        profile = db.query(Employee).filter_by(user_id=staff.id).one()
+        assert profile.shift_start == time(8, 0)
+        assert profile.shift_end == time(16, 0)
+    assert db.query(AuditLog).filter_by(
+        action="staff.shift.updated",
+        resource_id=str(staff.id),
+    ).count() == 1
 
 
 def test_staff_email_must_be_unique(client, create_user, login):

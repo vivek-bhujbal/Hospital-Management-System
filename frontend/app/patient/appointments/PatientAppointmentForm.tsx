@@ -31,6 +31,8 @@ interface PatientAppointmentFormProps {
 
 type SlotState = 'available' | 'past' | 'booked'
 
+const APPOINTMENT_SLOT_MINUTES = 15
+
 interface AppointmentSlot {
   time: string
   state: SlotState
@@ -86,7 +88,7 @@ export default function PatientAppointmentForm({ patientId, doctors, appointment
     )
     const slots: AppointmentSlot[] = []
 
-    for (let minutes = start; minutes < end; minutes += 30) {
+    for (let minutes = start; minutes < end; minutes += APPOINTMENT_SLOT_MINUTES) {
       const slot = toTime(minutes)
       const isPastToday = appointmentDate === today && minutes <= currentMinutes
       slots.push({
@@ -153,7 +155,7 @@ export default function PatientAppointmentForm({ patientId, doctors, appointment
       {selectedDoctor && (
         <div className="flex items-center gap-3 rounded-xl border border-teal-100 bg-teal-50/70 px-4 py-3 text-sm text-teal-900 dark:border-teal-900 dark:bg-teal-950/40 dark:text-teal-200">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white text-teal-700 shadow-sm dark:bg-teal-950"><Clock3 className="h-4 w-4" /></span>
-          <span><strong>{selectedDoctor.name}</strong> is available from {displayTime(shiftStart)} to {displayTime(shiftEnd)}. Appointments use 30-minute slots.</span>
+          <span><strong>{selectedDoctor.name}</strong> is available from {displayTime(shiftStart)} to {displayTime(shiftEnd)}. Appointments use 15-minute slots.</span>
         </div>
       )}
 

@@ -13,7 +13,7 @@ from app.core.permissions import (
 )
 from app.core.roles import RoleLike, normalize_role, role_satisfies_any
 from app.database import get_db
-from app.models.all_models import Employee, User
+from app.models.all_models import Doctor, Employee, User
 from app.services.authorization import user_has_permission
 
 
@@ -24,6 +24,15 @@ def is_user_access_active(user: User, db: Session) -> bool:
     """Return whether both the login and linked staff profile are active."""
     if not user.is_active:
         return False
+
+    if user.role == "doctor":
+        doctor_id = (
+            db.query(Doctor.id)
+            .filter(Doctor.user_id == user.id)
+            .scalar()
+        )
+        if doctor_id is None:
+            return False
 
     if user.role == "receptionist":
         employee_status = (

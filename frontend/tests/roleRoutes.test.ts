@@ -147,7 +147,9 @@ test('Nurse routes are assignment-scoped clinical-support pages and cross-role U
   const allowed = [
     '/nurse/home',
     '/nurse/patients',
-    '/nurse/patient/42',
+      '/nurse/patient/42',
+      '/nurse/history',
+      '/nurse/history/42',
     '/nurse/appointments',
     '/nurse/vitals',
     '/nurse/tasks',
@@ -158,7 +160,8 @@ test('Nurse routes are assignment-scoped clinical-support pages and cross-role U
   for (const path of [
     '/nurse/notes',
     '/nurse/patients/42',
-    '/nurse/patient/not-an-id',
+      '/nurse/patient/not-an-id',
+      '/nurse/history/not-an-id',
     '/nurse/billing',
     '/nurse/pharmacy',
     '/nurse/unknown',

@@ -11,7 +11,7 @@ export default function AppointmentMonitor({ appointments }: { appointments: Nur
   const [status, setStatus] = useState('all')
   const filtered = useMemo(() => appointments.filter((appointment) => {
     const query = search.trim().toLowerCase()
-    const matchesSearch = !query || [appointment.patient_name, appointment.doctor_name, appointment.reason, String(appointment.id)]
+    const matchesSearch = !query || [appointment.patient_name, appointment.doctor_name, appointment.department_name, appointment.reason, String(appointment.id)]
       .some((value) => value?.toLowerCase().includes(query))
     return matchesSearch && (status === 'all' || appointment.status === status)
   }), [appointments, search, status])
@@ -39,7 +39,7 @@ export default function AppointmentMonitor({ appointments }: { appointments: Nur
                   <p className="font-semibold text-slate-900">{appointment.patient_name}</p>
                   <p className="mt-1 text-sm text-slate-500">Appointment #{appointment.id} · {appointment.reason || 'No reason recorded'}</p>
                 </div>
-                <div className="text-sm text-slate-700"><p>{appointment.appt_date} at {shortTime(appointment.appt_time)}</p><p className="mt-1">Dr. {appointment.doctor_name}</p></div>
+                <div className="text-sm text-slate-700"><p>{appointment.appt_date} at {shortTime(appointment.appt_time)}</p><p className="mt-1">Dr. {appointment.doctor_name}{appointment.department_name ? ` · ${appointment.department_name}` : ''}</p></div>
                 <div>
                   <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize ring-1 ring-inset ${statusClass(appointment.status)}`}>{statusLabel(appointment.status)}</span>
                   <div className="mt-2 flex flex-wrap gap-1">

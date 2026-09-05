@@ -48,7 +48,11 @@ function revalidateNurse(patientId?: string) {
   revalidatePath('/nurse/appointments')
   revalidatePath('/nurse/vitals')
   revalidatePath('/nurse/tasks')
-  if (patientId) revalidatePath(`/nurse/patient/${patientId}`)
+  revalidatePath('/nurse/history')
+  if (patientId) {
+    revalidatePath(`/nurse/patient/${patientId}`)
+    revalidatePath(`/nurse/history/${patientId}`)
+  }
 }
 
 export async function recordVitalsAction(formData: FormData): Promise<NurseActionResult> {

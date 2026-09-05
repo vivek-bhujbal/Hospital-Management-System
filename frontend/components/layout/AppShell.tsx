@@ -9,17 +9,18 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { logoutAction } from '@/app/actions/auth'
+import {
+  getNotificationsAction,
+  getNotificationSocketAction,
+  markAllNotificationsReadAction,
+  markNotificationReadAction,
+  type LiveNotification,
+} from '@/app/actions/notifications'
 import Sidebar, { ROLE_LABELS, visibleMenuItems } from '@/components/Sidebar'
 import { cn } from '@/components/ui/HmsUI'
 import type { Permission, UserRole } from '@/lib/permissions'
 
-export interface ShellNotification {
-  id: number
-  subject: string
-  body: string
-  status: string
-  created_at: string | null
-}
+export type ShellNotification = LiveNotification
 
 interface AppShellProps {
   children: React.ReactNode
@@ -64,10 +65,95 @@ export default function AppShell({ children, role, portalRole, permissions, user
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [dark, setDark] = useState(false)
+  const [liveNotifications, setLiveNotifications] = useState(notifications)
+  const [notificationsLive, setNotificationsLive] = useState(false)
   const searchInput = useRef<HTMLInputElement>(null)
   const items = useMemo(() => visibleMenuItems(portalRole, permissions), [permissions, portalRole])
   const filteredItems = items.filter((item) => item.name.toLowerCase().includes(query.toLowerCase()))
-  const unread = notifications.filter((notification) => notification.status !== 'read').length
+  const unread = liveNotifications.filter((notification) => notification.status !== 'read').length
+
+  useEffect(() => {
+    setLiveNotifications(notifications)
+  }, [notifications])
+
+  useEffect(() => {
+    let active = true
+    let socket: WebSocket | null = null
+    let reconnectTimer: number | undefined
+
+    const refresh = async () => {
+      try {
+        const latest = await getNotificationsAction()
+        if (active) setLiveNotifications(latest)
+      } catch {
+        // The ten-second fallback will retry temporary connection failures.
+      }
+    }
+
+    const connect = async () => {
+      try {
+        const connection = await getNotificationSocketAction()
+        if (!active) return
+        socket = new WebSocket(connection.url, ['bearer', connection.ticket])
+        socket.onopen = () => active && setNotificationsLive(true)
+        socket.onmessage = (event) => {
+          try {
+            const payload = JSON.parse(String(event.data)) as { event?: string }
+            if (payload.event === 'notifications.ready' || payload.event === 'notifications.changed') {
+              void refresh()
+            }
+          } catch {
+            // Ignore plain-text keepalive frames.
+          }
+        }
+        socket.onclose = () => {
+          if (!active) return
+          setNotificationsLive(false)
+          reconnectTimer = window.setTimeout(() => void connect(), 3000)
+        }
+        socket.onerror = () => socket?.close()
+      } catch {
+        if (active) reconnectTimer = window.setTimeout(() => void connect(), 5000)
+      }
+    }
+
+    void connect()
+    const pollingTimer = window.setInterval(() => void refresh(), 10000)
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void refresh()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      active = false
+      setNotificationsLive(false)
+      socket?.close()
+      if (reconnectTimer) window.clearTimeout(reconnectTimer)
+      window.clearInterval(pollingTimer)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [])
+
+  const markRead = async (notificationId: number) => {
+    setLiveNotifications((current) => current.map((item) => (
+      item.id === notificationId ? { ...item, status: 'read' } : item
+    )))
+    try {
+      await markNotificationReadAction(notificationId)
+    } catch {
+      const latest = await getNotificationsAction().catch(() => null)
+      if (latest) setLiveNotifications(latest)
+    }
+  }
+
+  const markAllRead = async () => {
+    const previous = liveNotifications
+    setLiveNotifications((current) => current.map((item) => ({ ...item, status: 'read' })))
+    try {
+      await markAllNotificationsReadAction()
+    } catch {
+      setLiveNotifications(previous)
+    }
+  }
 
   useEffect(() => {
     const savedCollapsed = window.localStorage.getItem('hms-sidebar-collapsed') === 'true'
@@ -137,8 +223,11 @@ export default function AppShell({ children, role, portalRole, permissions, user
             <details className="group relative">
               <summary className="relative flex cursor-pointer list-none rounded-xl p-2.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800" aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}><Bell className="h-5 w-5" />{unread > 0 && <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[0.58rem] font-bold text-white ring-2 ring-white dark:ring-slate-900">{Math.min(unread, 9)}{unread > 9 ? '+' : ''}</span>}</summary>
               <div className="absolute right-0 top-12 w-[min(23rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border bg-[var(--hms-surface)] shadow-raised">
-                <div className="flex items-center justify-between border-b px-4 py-3"><p className="font-semibold text-slate-900 dark:text-slate-50">Notifications</p><span className="text-xs text-slate-500">{unread} unread</span></div>
-                <div className="max-h-80 overflow-y-auto">{notifications.length === 0 ? <div className="px-5 py-10 text-center"><Bell className="mx-auto h-6 w-6 text-slate-300" /><p className="mt-3 text-sm font-medium text-slate-700 dark:text-slate-300">You’re all caught up</p><p className="mt-1 text-xs text-slate-500">New care and workflow updates will appear here.</p></div> : notifications.slice(0, 6).map((notification) => <article key={notification.id} className={cn('border-b px-4 py-3 last:border-0', notification.status !== 'read' && 'bg-brand-50/60 dark:bg-brand-950/30')}><div className="flex gap-3"><span className={cn('mt-1 h-2 w-2 shrink-0 rounded-full', notification.status !== 'read' ? 'bg-brand-500' : 'bg-slate-300')} /><div className="min-w-0"><p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{notification.subject}</p><p className="mt-0.5 line-clamp-2 text-xs leading-5 text-slate-500 dark:text-slate-400">{notification.body}</p><p className="mt-1 text-[0.68rem] font-medium text-slate-400">{relativeTime(notification.created_at)}</p></div></div></article>)}</div>
+                <div className="flex items-center justify-between border-b px-4 py-3">
+                  <div><p className="font-semibold text-slate-900 dark:text-slate-50">Notifications</p><p className={cn('mt-0.5 text-[0.65rem] font-medium', notificationsLive ? 'text-emerald-600' : 'text-slate-400')}>{notificationsLive ? 'Live updates connected' : 'Connecting live updates…'}</p></div>
+                  {unread > 0 ? <button type="button" onClick={() => void markAllRead()} className="text-xs font-semibold text-brand-700 hover:text-brand-900 dark:text-brand-300">Mark all read</button> : <span className="text-xs text-slate-500">0 unread</span>}
+                </div>
+                <div className="max-h-80 overflow-y-auto">{liveNotifications.length === 0 ? <div className="px-5 py-10 text-center"><Bell className="mx-auto h-6 w-6 text-slate-300" /><p className="mt-3 text-sm font-medium text-slate-700 dark:text-slate-300">You’re all caught up</p><p className="mt-1 text-xs text-slate-500">New care and workflow updates will appear here.</p></div> : liveNotifications.slice(0, 10).map((notification) => <button type="button" onClick={() => void markRead(notification.id)} key={notification.id} className={cn('block w-full border-b px-4 py-3 text-left last:border-0 hover:bg-slate-50 dark:hover:bg-slate-800/70', notification.status !== 'read' && 'bg-brand-50/60 dark:bg-brand-950/30')}><span className="flex gap-3"><span className={cn('mt-1 h-2 w-2 shrink-0 rounded-full', notification.status !== 'read' ? 'bg-brand-500' : 'bg-slate-300')} /><span className="min-w-0"><span className="block text-sm font-semibold text-slate-900 dark:text-slate-100">{notification.subject || 'Workflow update'}</span><span className="mt-0.5 block line-clamp-2 text-xs leading-5 text-slate-500 dark:text-slate-400">{notification.body}</span><span className="mt-1 block text-[0.68rem] font-medium text-slate-400">{relativeTime(notification.created_at)}</span></span></span></button>)}</div>
               </div>
             </details>
 
