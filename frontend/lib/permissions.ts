@@ -31,6 +31,7 @@ export const PERMISSIONS = {
   PHARMACY_INVENTORY: 'pharmacy.inventory',
   PHARMACY_DISPENSE: 'pharmacy.dispense',
   PHARMACY_PURCHASE: 'pharmacy.purchase',
+  PHARMACY_MASTER_MANAGE: 'pharmacy.master.manage',
   LABORATORY_VIEW: 'laboratory.view',
   LABORATORY_ORDER: 'laboratory.order',
   LABORATORY_SAMPLE: 'laboratory.sample',

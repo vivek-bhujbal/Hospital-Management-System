@@ -5,6 +5,7 @@ from decimal import Decimal
 from enum import Enum
 from app.core.roles import UserRole
 from app.core.permissions import Permission
+from app.core.config import settings
 from app.core.security import validate_password_strength
 
 RoleEnum = UserRole
@@ -676,47 +677,116 @@ class NurseAssignmentOption(BaseModel):
 
 # Pharmacy Feature Schemas
 class MedicineCategoryBase(BaseModel):
-    name: str
-    description: Optional[str] = None
+    name: str = Field(min_length=2, max_length=100)
+    description: Optional[str] = Field(default=None, max_length=1000)
+    status: Literal['active', 'inactive'] = 'active'
+
+    @field_validator('name')
+    @classmethod
+    def normalize_category_name(cls, value: str) -> str:
+        return ' '.join(value.split())
 
 class MedicineCategoryCreate(MedicineCategoryBase):
     pass
 
+class MedicineCategoryUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=2, max_length=100)
+    description: Optional[str] = Field(default=None, max_length=1000)
+    status: Optional[Literal['active', 'inactive']] = None
+
+    @field_validator('name')
+    @classmethod
+    def normalize_category_update_name(cls, value: Optional[str]) -> Optional[str]:
+        return ' '.join(value.split()) if value is not None else value
+
 class MedicineCategoryResponse(MedicineCategoryBase):
     id: int
     created_at: datetime
+    updated_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
 
 class SupplierBase(BaseModel):
-    name: str
-    contact_person: Optional[str] = None
+    name: str = Field(min_length=2, max_length=150)
+    contact_person: Optional[str] = Field(default=None, max_length=100)
     email: Optional[EmailStr] = None
-    phone: Optional[str] = None
-    address: Optional[str] = None
+    phone: Optional[str] = Field(default=None, min_length=7, max_length=20, pattern=r'^[0-9+() -]+$')
+    address: Optional[str] = Field(default=None, max_length=1000)
+    status: Literal['active', 'inactive'] = 'active'
+
+    @field_validator('name')
+    @classmethod
+    def normalize_supplier_name(cls, value: str) -> str:
+        return ' '.join(value.split())
 
 class SupplierCreate(SupplierBase):
     pass
 
+class SupplierUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=2, max_length=150)
+    contact_person: Optional[str] = Field(default=None, max_length=100)
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = Field(default=None, min_length=7, max_length=20, pattern=r'^[0-9+() -]+$')
+    address: Optional[str] = Field(default=None, max_length=1000)
+    status: Optional[Literal['active', 'inactive']] = None
+
+    @field_validator('name')
+    @classmethod
+    def normalize_supplier_update_name(cls, value: Optional[str]) -> Optional[str]:
+        return ' '.join(value.split()) if value is not None else value
+
 class SupplierResponse(SupplierBase):
     id: int
     created_at: datetime
+    updated_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
 
 class MedicineBase(BaseModel):
-    name: str
+    name: str = Field(min_length=2, max_length=150)
     sku: Optional[str] = Field(default=None, min_length=1, max_length=100)
-    generic_name: Optional[str] = None
-    category_id: int
-    unit: Optional[str] = None
-    description: Optional[str] = None
+    generic_name: Optional[str] = Field(default=None, max_length=150)
+    category_id: int = Field(gt=0)
+    unit: Optional[str] = Field(default=None, max_length=50)
+    description: Optional[str] = Field(default=None, max_length=1000)
+    specializations: List[str] = Field(default_factory=list, max_length=100)
+    minimum_stock_level: int = Field(
+        default=settings.PHARMACY_DEFAULT_LOW_STOCK_LEVEL,
+        ge=0,
+        le=1000000,
+    )
     status: Literal['active', 'inactive'] = 'active'
 
+    @field_validator('name', 'sku', 'generic_name', 'unit')
+    @classmethod
+    def normalize_medicine_text(cls, value: Optional[str]) -> Optional[str]:
+        return ' '.join(value.split()) if value is not None else value
+
 class MedicineCreate(MedicineBase):
-    pass
+    category_id: Optional[int] = Field(default=None, gt=0)
+    category_name: Optional[str] = Field(default=None, min_length=2, max_length=100)
+
+    @model_validator(mode='after')
+    def require_category(self):
+        if bool(self.category_id) == bool(self.category_name and self.category_name.strip()):
+            raise ValueError('Provide either category_id or category_name')
+        return self
+
+class MedicineUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=2, max_length=150)
+    sku: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    generic_name: Optional[str] = Field(default=None, max_length=150)
+    category_id: Optional[int] = Field(default=None, gt=0)
+    category_name: Optional[str] = Field(default=None, min_length=2, max_length=100)
+    specializations: Optional[List[str]] = Field(default=None, max_length=100)
+    unit: Optional[str] = Field(default=None, max_length=50)
+    description: Optional[str] = Field(default=None, max_length=1000)
+    minimum_stock_level: Optional[int] = Field(default=None, ge=0, le=1000000)
+    status: Optional[Literal['active', 'inactive']] = None
 
 class MedicineResponse(MedicineBase):
     id: int
     created_at: datetime
+    updated_at: Optional[datetime] = None
+    category_name: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
 
 class MedicineBatchBase(BaseModel):
@@ -779,7 +849,7 @@ class InventoryAdjustmentRequest(BaseModel):
 
 class InventoryBatchCreate(BaseModel):
     medicine_id: int = Field(gt=0)
-    supplier_id: Optional[int] = Field(default=None, gt=0)
+    supplier_id: int = Field(gt=0)
     batch_number: str = Field(min_length=1, max_length=100)
     expiry_date: date
     quantity: int = Field(gt=0)

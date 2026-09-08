@@ -284,25 +284,30 @@ class NursingTask(Base):
 
 class MedicineCategory(Base):
     __tablename__ = 'medicine_category'
+    __table_args__ = (UniqueConstraint('name', name='uq_medicine_category_name'),)
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
     description = Column(Text)
+    status = Column(Enum('active', 'inactive'), default='active', nullable=False)
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
 class Supplier(Base):
     __tablename__ = 'supplier'
+    __table_args__ = (UniqueConstraint('name', name='uq_supplier_name'),)
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(150), nullable=False)
     contact_person = Column(String(100))
     email = Column(String(150))
     phone = Column(String(20))
     address = Column(Text)
+    status = Column(Enum('active', 'inactive'), default='active', nullable=False)
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
 class Medicine(Base):
     __tablename__ = 'medicine'
+    __table_args__ = (UniqueConstraint('name', name='uq_medicine_name'),)
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(150), nullable=False)
     sku = Column(String(100), unique=True, nullable=True)
@@ -310,6 +315,9 @@ class Medicine(Base):
     category_id = Column(Integer, ForeignKey('medicine_category.id'), nullable=False)
     unit = Column(String(50))
     description = Column(Text)
+    # Discovery metadata only; prescribing authority remains policy-driven.
+    specializations = Column(JSON, nullable=True, default=list)
+    minimum_stock_level = Column(Integer, nullable=False, default=10)
     status = Column(Enum('active', 'inactive'), default='active', nullable=False)
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())

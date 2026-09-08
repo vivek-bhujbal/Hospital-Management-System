@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"
     APP_ENV: str = "development"
     HOSPITAL_TIMEZONE: str = "Asia/Kolkata"
+    PHARMACY_EXPIRY_WARNING_DAYS: int = 30
+    PHARMACY_DEFAULT_LOW_STOCK_LEVEL: int = 10
 
     SUPER_ADMIN_EMAIL: str | None = None
     SUPER_ADMIN_PASSWORD: str | None = None

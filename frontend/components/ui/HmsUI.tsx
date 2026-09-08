@@ -66,7 +66,7 @@ export function StatCard({ label, value, icon: Icon, helper, href, tone = 'defau
 const statusTone = (status: string) => {
   const value = status.toLowerCase().replaceAll('-', '_').replaceAll(' ', '_')
   if (['completed', 'paid', 'approved', 'active', 'available', 'verified', 'dispensed', 'settled'].includes(value)) return 'success'
-  if (['pending', 'requested', 'scheduled', 'waiting', 'sample_pending', 'documents_required'].includes(value)) return 'warning'
+  if (['pending', 'requested', 'scheduled', 'waiting', 'sample_pending', 'documents_required', 'low_stock', 'expiring_soon'].includes(value)) return 'warning'
   if (['cancelled', 'canceled', 'rejected', 'failed', 'inactive', 'expired', 'out_of_stock'].includes(value)) return 'danger'
   if (['processing', 'in_progress', 'checked_in', 'submitted', 'under_review', 'assigned'].includes(value)) return 'info'
   return 'neutral'

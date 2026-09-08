@@ -156,7 +156,7 @@ def verify_clean_database() -> dict[str, object]:
                 nonempty_tables[table_name] = count
         if nonempty_tables:
             raise RuntimeError(
-                f"Expected zero non-user application records: {nonempty_tables}"
+                f"Expected zero transactional business records: {nonempty_tables}"
             )
         return {
             "migration_revision": current_revision,

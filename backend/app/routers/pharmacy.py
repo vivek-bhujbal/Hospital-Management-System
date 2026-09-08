@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import require_exact_role, require_permission
 from app.core.permissions import Permission
+from app.core.config import settings
 from app.database import get_db
 from app.models.all_models import (
     Appointment, Dispensing, DispensingItem, Doctor, Medicine, MedicineBatch,
@@ -18,11 +19,12 @@ from app.models.all_models import (
 from app.schemas.all_schemas import (
     DispenseRequest, DispensingResponse, InventoryAdjustmentRequest,
     InventoryBatchCreate, MedicineBatchCreate, MedicineBatchResponse,
-    MedicineCategoryCreate, MedicineCategoryResponse, MedicineCreate, MedicineResponse,
+    MedicineCategoryResponse, MedicineResponse,
     PharmacyPrescriptionAction, PurchaseCreate, PurchaseResponse,
-    SupplierCreate, SupplierResponse,
+    SupplierResponse,
 )
 from app.services.audit_service import record_audit_event, request_audit_metadata
+from app.services.pharmacy_stock_service import receive_stock
 
 
 router = APIRouter(
@@ -159,7 +161,11 @@ def pharmacy_dashboard(
     records = [_prescription_record(row) for row in _prescription_query(db).all()]
     today = date.today()
     batches = db.query(MedicineBatch).all()
-    low_stock = sum(1 for item in batches if 0 < item.available_quantity <= 10 and item.expiry_date >= today)
+    batch_records = [_batch_record(db, item) for item in batches]
+    low_stock = len({
+        item["medicine_id"] for item in batch_records
+        if item["stock_status"] == "low_stock"
+    })
     out_of_stock = sum(1 for item in batches if item.available_quantity == 0)
     expired = sum(1 for item in batches if item.available_quantity > 0 and item.expiry_date < today)
     dispensed_today = db.query(Dispensing).filter(
@@ -181,108 +187,114 @@ def pharmacy_dashboard(
 
 @router.get("/categories", response_model=List[MedicineCategoryResponse])
 def list_categories(
+    active_only: bool = False,
     db: Session = Depends(get_db),
     _: User = Depends(require_permission(Permission.pharmacy_view)),
 ):
-    return db.query(MedicineCategory).order_by(MedicineCategory.name).all()
-
-
-@router.post("/categories", response_model=MedicineCategoryResponse, status_code=201)
-def create_category(
-    payload: MedicineCategoryCreate, request: Request, db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(Permission.pharmacy_inventory)),
-):
-    item = MedicineCategory(**payload.model_dump())
-    db.add(item)
-    db.flush()
-    record_audit_event(
-        db, actor=current_user, action="pharmacy.category_created",
-        resource_type="medicine_category", resource_id=str(item.id),
-        new_values=payload.model_dump(), **request_audit_metadata(request),
-    )
-    db.commit()
-    db.refresh(item)
-    return item
+    query = db.query(MedicineCategory)
+    if active_only:
+        query = query.filter(MedicineCategory.status == "active")
+    return query.order_by(MedicineCategory.name).all()
 
 
 @router.get("/suppliers", response_model=List[SupplierResponse])
 def list_suppliers(
+    active_only: bool = False,
     db: Session = Depends(get_db),
     _: User = Depends(require_permission(Permission.pharmacy_view)),
 ):
-    return db.query(Supplier).order_by(Supplier.name).all()
-
-
-@router.post("/suppliers", response_model=SupplierResponse, status_code=201)
-def create_supplier(
-    payload: SupplierCreate, request: Request, db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(Permission.pharmacy_inventory)),
-):
-    item = Supplier(**payload.model_dump())
-    db.add(item)
-    db.flush()
-    record_audit_event(
-        db, actor=current_user, action="pharmacy.supplier_created", resource_type="supplier",
-        resource_id=str(item.id), new_values=payload.model_dump(), **request_audit_metadata(request),
-    )
-    db.commit()
-    db.refresh(item)
-    return item
+    query = db.query(Supplier)
+    if active_only:
+        query = query.filter(Supplier.status == "active")
+    return query.order_by(Supplier.name).all()
 
 
 @router.get("/medicines", response_model=List[MedicineResponse])
 def get_medicines(
+    active_only: bool = False,
     db: Session = Depends(get_db),
     _: User = Depends(require_permission(Permission.pharmacy_view)),
 ):
-    return db.query(Medicine).order_by(Medicine.name).all()
-
-
-@router.post("/medicines", response_model=MedicineResponse, status_code=201)
-def create_medicine(
-    payload: MedicineCreate, request: Request, db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(Permission.pharmacy_inventory)),
-):
-    if not db.get(MedicineCategory, payload.category_id):
-        raise HTTPException(status_code=400, detail="Medicine category does not exist")
-    item = Medicine(**payload.model_dump())
-    db.add(item)
-    try:
-        db.flush()
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(status_code=409, detail="Medicine SKU/code already exists")
-    record_audit_event(
-        db, actor=current_user, action="pharmacy.medicine_created", resource_type="medicine",
-        resource_id=str(item.id), new_values=payload.model_dump(), **request_audit_metadata(request),
-    )
-    db.commit()
-    db.refresh(item)
-    return item
+    query = db.query(Medicine)
+    if active_only:
+        query = query.join(MedicineCategory).filter(
+            Medicine.status == "active",
+            MedicineCategory.status == "active",
+        )
+    return query.order_by(Medicine.name).all()
 
 
 def _batch_record(db: Session, batch: MedicineBatch):
     medicine = db.get(Medicine, batch.medicine_id)
     supplier = db.get(Supplier, batch.supplier_id) if batch.supplier_id else None
+    category = db.get(MedicineCategory, medicine.category_id) if medicine else None
     today = date.today()
+    cutoff = today + timedelta(days=settings.PHARMACY_EXPIRY_WARNING_DAYS)
+    medicine_available = db.query(func.sum(MedicineBatch.available_quantity)).filter(
+        MedicineBatch.medicine_id == batch.medicine_id,
+        MedicineBatch.expiry_date >= today,
+    ).scalar() or 0
     if batch.expiry_date < today and batch.available_quantity > 0:
         stock_status = "expired"
     elif batch.available_quantity == 0:
         stock_status = "out_of_stock"
-    elif batch.available_quantity <= 10:
+    elif batch.expiry_date <= cutoff:
+        stock_status = "expiring_soon"
+    elif medicine and medicine_available <= medicine.minimum_stock_level:
         stock_status = "low_stock"
     else:
         stock_status = "in_stock"
     return {
         "id": batch.id, "medicine_id": batch.medicine_id,
         "medicine_name": medicine.name if medicine else "Unknown medicine",
+        "generic_name": medicine.generic_name if medicine else None,
         "sku": medicine.sku if medicine else None,
+        "category_id": medicine.category_id if medicine else None,
+        "category_name": category.name if category else None,
+        "unit": medicine.unit if medicine else None,
+        "minimum_stock_level": medicine.minimum_stock_level if medicine else 0,
         "supplier_id": batch.supplier_id,
         "supplier_name": supplier.name if supplier else None,
+        "supplier_status": supplier.status if supplier else None,
         "batch_number": batch.batch_number, "expiry_date": batch.expiry_date,
         "purchase_price": batch.purchase_price, "selling_price": batch.selling_price,
         "quantity": batch.quantity, "available_quantity": batch.available_quantity,
         "stock_status": stock_status, "created_at": batch.created_at,
+    }
+
+
+@router.get("/inventory/summary")
+def get_inventory_summary(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission(Permission.pharmacy_inventory)),
+):
+    today = date.today()
+    cutoff = today + timedelta(days=settings.PHARMACY_EXPIRY_WARNING_DAYS)
+    batches = db.query(MedicineBatch).all()
+    active_medicines = db.query(Medicine).filter(Medicine.status == "active").all()
+    valid_totals = {
+        medicine.id: sum(
+            batch.available_quantity for batch in batches
+            if batch.medicine_id == medicine.id and batch.expiry_date >= today
+        )
+        for medicine in active_medicines
+    }
+    return {
+        "total_medicines": len(active_medicines),
+        "total_stock_quantity": sum(batch.available_quantity for batch in batches),
+        "low_stock_items": sum(
+            0 < valid_totals[medicine.id] <= medicine.minimum_stock_level
+            for medicine in active_medicines
+        ),
+        "expiring_soon": sum(
+            batch.available_quantity > 0 and today <= batch.expiry_date <= cutoff
+            for batch in batches
+        ),
+        "expired_batches": sum(
+            batch.available_quantity > 0 and batch.expiry_date < today
+            for batch in batches
+        ),
+        "expiry_warning_days": settings.PHARMACY_EXPIRY_WARNING_DAYS,
     }
 
 
@@ -294,7 +306,10 @@ def get_inventory(
 ):
     query = db.query(MedicineBatch)
     if not include_empty:
-        query = query.filter(MedicineBatch.available_quantity > 0)
+        query = query.filter(
+            MedicineBatch.available_quantity > 0,
+            MedicineBatch.expiry_date >= date.today(),
+        )
     return [
         _batch_record(db, batch)
         for batch in query.order_by(MedicineBatch.expiry_date, MedicineBatch.id).all()
@@ -306,37 +321,7 @@ def add_inventory_batch(
     payload: InventoryBatchCreate, request: Request, db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(Permission.pharmacy_inventory)),
 ):
-    medicine = db.get(Medicine, payload.medicine_id)
-    if not medicine or medicine.status != "active":
-        raise HTTPException(status_code=400, detail="Medicine does not exist or is inactive")
-    if payload.supplier_id and not db.get(Supplier, payload.supplier_id):
-        raise HTTPException(status_code=400, detail="Supplier does not exist")
-    if payload.expiry_date <= date.today():
-        raise HTTPException(status_code=400, detail="Expired stock cannot be added")
-    batch = MedicineBatch(
-        **payload.model_dump(), available_quantity=payload.quantity,
-    )
-    db.add(batch)
-    try:
-        db.flush()
-        db.add(StockTransaction(
-            medicine_id=batch.medicine_id, batch_id=batch.id,
-            transaction_type="adjustment", quantity=payload.quantity,
-            reason="Initial stock", created_by=current_user.id,
-        ))
-        record_audit_event(
-            db, actor=current_user, action="pharmacy.stock_added",
-            resource_type="medicine_batch", resource_id=str(batch.id),
-            new_values={
-                "prescription_id": None, "medicine_id": batch.medicine_id,
-                "batch": batch.batch_number, "quantity": payload.quantity,
-            }, **request_audit_metadata(request),
-        )
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(status_code=409, detail="This batch already exists for the medicine")
-    db.refresh(batch)
+    batch = receive_stock(db, payload, current_user, request)
     return _batch_record(db, batch)
 
 
@@ -391,37 +376,14 @@ def adjust_inventory_batch(
 
 @router.get("/alerts")
 def get_alerts(
-    low_stock_threshold: int = 10,
-    expiry_days: int = 30,
     db: Session = Depends(get_db),
     _: User = Depends(require_permission(Permission.pharmacy_inventory)),
 ):
-    if not 1 <= low_stock_threshold <= 10000 or not 0 <= expiry_days <= 3650:
-        raise HTTPException(status_code=422, detail="Invalid alert threshold")
-    today = date.today()
-    cutoff = today + timedelta(days=expiry_days)
-    low_stock = db.query(MedicineBatch).filter(
-        MedicineBatch.available_quantity > 0,
-        MedicineBatch.available_quantity <= low_stock_threshold,
-    ).all()
-    expiring = db.query(MedicineBatch).filter(
-        MedicineBatch.available_quantity > 0,
-        MedicineBatch.expiry_date >= today,
-        MedicineBatch.expiry_date <= cutoff,
-    ).all()
-    expired = db.query(MedicineBatch).filter(
-        MedicineBatch.available_quantity > 0,
-        MedicineBatch.expiry_date < today,
-    ).all()
-    serialize = lambda batch: {
-        "batch_id": batch.id, "medicine_id": batch.medicine_id,
-        "available_quantity": batch.available_quantity,
-        "expiry_date": batch.expiry_date,
-    }
+    records = [_batch_record(db, batch) for batch in db.query(MedicineBatch).all()]
     return {
-        "low_stock": [serialize(item) for item in low_stock],
-        "expiring": [serialize(item) for item in expiring],
-        "expired": [serialize(item) for item in expired],
+        "low_stock": [item for item in records if item["stock_status"] == "low_stock"],
+        "expiring": [item for item in records if item["stock_status"] == "expiring_soon"],
+        "expired": [item for item in records if item["stock_status"] == "expired"],
     }
 
 
@@ -438,8 +400,9 @@ def receive_purchase(
     payload: PurchaseCreate, request: Request, db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(Permission.pharmacy_purchase)),
 ):
-    if not db.get(Supplier, payload.supplier_id):
-        raise HTTPException(status_code=400, detail="Supplier does not exist")
+    supplier = db.get(Supplier, payload.supplier_id)
+    if not supplier or supplier.status != "active":
+        raise HTTPException(status_code=400, detail="Select an active supplier")
     if any(item.expiry_date <= payload.purchase_date for item in payload.items):
         raise HTTPException(status_code=400, detail="Batch expiry must be after purchase date")
     total = sum((item.purchase_price * item.quantity for item in payload.items), Decimal("0.00"))

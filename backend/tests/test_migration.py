@@ -92,6 +92,32 @@ def test_nursing_task_creator_migration_adds_nullable_doctor_reference(tmp_path)
         )
 
 
+def test_pharmacy_master_migration_keeps_fresh_database_empty(tmp_path):
+    database_path = tmp_path / "specialty-formulary.db"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    previous_url = settings.DATABASE_URL
+    settings.DATABASE_URL = database_url
+    try:
+        command.upgrade(_config(database_url), "head")
+    finally:
+        settings.DATABASE_URL = previous_url
+
+    engine = create_engine(database_url)
+    with engine.connect() as connection:
+        columns = {
+            column["name"]
+            for column in inspect(connection).get_columns("medicine")
+        }
+        assert {"specializations", "minimum_stock_level"}.issubset(columns)
+        assert connection.execute(text("SELECT COUNT(*) FROM medicine")).scalar_one() == 0
+        assert connection.execute(text("SELECT COUNT(*) FROM medicine_category")).scalar_one() == 0
+        supplier_columns = {
+            column["name"]
+            for column in inspect(connection).get_columns("supplier")
+        }
+        assert "status" in supplier_columns
+
+
 def test_migration_refuses_to_drop_populated_unmanaged_enterprise_table(tmp_path):
     database_path = tmp_path / "populated-enterprise.db"
     database_url = f"sqlite:///{database_path.as_posix()}"

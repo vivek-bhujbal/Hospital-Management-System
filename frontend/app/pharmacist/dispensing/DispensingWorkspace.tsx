@@ -14,7 +14,7 @@ export default function DispensingWorkspace({ prescriptions, inventory, records,
   const matching = useMemo(() => inventory.filter(batch => {
     if (!prescription?.medicine) return true
     const prescribed = prescription.medicine.trim().toLowerCase()
-    return batch.medicine_name.trim().toLowerCase() === prescribed
+    return batch.medicine_name.trim().toLowerCase() === prescribed || batch.generic_name?.trim().toLowerCase() === prescribed
   }), [inventory, prescription])
   const batch = inventory.find(item => String(item.id) === batchId)
   async function submit(data: FormData) {

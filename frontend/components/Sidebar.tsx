@@ -55,6 +55,7 @@ const MENU_ITEMS: Record<UserRole, readonly MenuItem[]> = {
     { name: 'Patients', path: '/admin/patients', icon: FileHeart, permission: PERMISSIONS.PATIENTS_VIEW, group: 'Care workspace' },
     { name: 'Appointments', path: '/admin/appointments', icon: CalendarDays, permission: PERMISSIONS.APPOINTMENTS_VIEW, group: 'Operations' },
     { name: 'Billing', path: '/admin/billing', icon: WalletCards, permission: PERMISSIONS.BILLING_REPORT, group: 'Operations' },
+    { name: 'Pharmacy master', path: '/admin/pharmacy', icon: Pill, permission: PERMISSIONS.PHARMACY_MASTER_MANAGE, group: 'Administration' },
   ],
   super_admin: [
     { name: 'Control center', path: '/super-admin/home', icon: LayoutDashboard, group: 'Overview' },
@@ -89,7 +90,7 @@ const MENU_ITEMS: Record<UserRole, readonly MenuItem[]> = {
     { name: 'Pharmacy overview', path: '/pharmacist/home', icon: LayoutDashboard, group: 'Overview' },
     { name: 'Prescriptions', path: '/pharmacist/prescriptions', icon: FileCheck2, permission: PERMISSIONS.PHARMACY_VIEW, group: 'Care workspace' },
     { name: 'Dispensing', path: '/pharmacist/dispensing', icon: Pill, permission: PERMISSIONS.PHARMACY_DISPENSE, group: 'Operations' },
-    { name: 'Inventory', path: '/pharmacist/inventory', icon: PackageSearch, permission: PERMISSIONS.PHARMACY_INVENTORY, group: 'Operations' },
+    { name: 'Inventory & stock', path: '/pharmacist/inventory', icon: PackageSearch, permission: PERMISSIONS.PHARMACY_INVENTORY, group: 'Operations' },
   ],
   lab_technician: [
     { name: 'Lab overview', path: '/lab/home', icon: LayoutDashboard, group: 'Overview' },

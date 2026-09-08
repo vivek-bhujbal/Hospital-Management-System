@@ -18,7 +18,7 @@ from app.database import Base, get_db
 from app.models.all_models import Doctor, Employee, EmployeePermission, User
 from app.routers import (
     accountant, admin, ambulance, appointments, auth, billing, doctors, employees, insurance,
-    lab, manager, nurse, patients, pharmacy, prescriptions, radiology, rbac, realtime, super_admin,
+    lab, manager, nurse, patients, pharmacy, pharmacy_master, prescriptions, radiology, rbac, realtime, super_admin,
 )
 
 
@@ -54,6 +54,7 @@ test_app.include_router(super_admin.router)
 test_app.include_router(manager.router)
 test_app.include_router(nurse.router)
 test_app.include_router(pharmacy.router)
+test_app.include_router(pharmacy_master.router)
 test_app.include_router(lab.router)
 test_app.include_router(radiology.router)
 test_app.include_router(accountant.router)

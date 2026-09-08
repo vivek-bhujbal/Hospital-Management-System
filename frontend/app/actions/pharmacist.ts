@@ -40,30 +40,11 @@ export async function prescriptionAction(data: FormData) {
   return result(response, 'Unable to update prescription workflow.')
 }
 
-export async function createCategoryAction(data: FormData) {
-  return result(await fetch(`${API_URL}/pharmacy/categories`, {
-    method: 'POST', headers: authHeaders(), body: JSON.stringify({ name: value(data, 'name'), description: value(data, 'description') || null }),
-  }), 'Unable to create category.')
-}
-export async function createSupplierAction(data: FormData) {
-  return result(await fetch(`${API_URL}/pharmacy/suppliers`, {
-    method: 'POST', headers: authHeaders(), body: JSON.stringify({ name: value(data, 'name'), contact_person: value(data, 'contact_person') || null }),
-  }), 'Unable to create supplier.')
-}
-export async function createMedicineAction(data: FormData) {
-  return result(await fetch(`${API_URL}/pharmacy/medicines`, {
-    method: 'POST', headers: authHeaders(), body: JSON.stringify({
-      name: value(data, 'name'), sku: value(data, 'sku') || null,
-      generic_name: value(data, 'generic_name') || null, category_id: Number(value(data, 'category_id')),
-      unit: value(data, 'unit') || null, description: null, status: 'active',
-    }),
-  }), 'Unable to create medicine.')
-}
 export async function addInventoryAction(data: FormData) {
   return result(await fetch(`${API_URL}/pharmacy/inventory`, {
     method: 'POST', headers: authHeaders(), body: JSON.stringify({
       medicine_id: Number(value(data, 'medicine_id')),
-      supplier_id: value(data, 'supplier_id') ? Number(value(data, 'supplier_id')) : null,
+      supplier_id: Number(value(data, 'supplier_id')),
       batch_number: value(data, 'batch_number'), expiry_date: value(data, 'expiry_date'),
       quantity: Number(value(data, 'quantity')), purchase_price: value(data, 'purchase_price'),
       selling_price: value(data, 'selling_price'),

@@ -43,6 +43,7 @@ class Permission(str, Enum):
     pharmacy_inventory = "pharmacy.inventory"
     pharmacy_dispense = "pharmacy.dispense"
     pharmacy_purchase = "pharmacy.purchase"
+    pharmacy_master_manage = "pharmacy.master.manage"
 
     laboratory_view = "laboratory.view"
     laboratory_order = "laboratory.order"
@@ -174,6 +175,7 @@ ROLE_PERMISSIONS: Dict[str, FrozenSet[str]] = {
         Permission.staff_deactivate.value,
         Permission.settings_view.value,
         Permission.departments_manage.value,
+        Permission.pharmacy_master_manage.value,
     }),
     UserRole.super_admin.value: frozenset({
         Permission.staff_manage_roles.value,
