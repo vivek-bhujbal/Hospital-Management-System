@@ -125,11 +125,18 @@ class Appointment(Base):
 
 class Prescription(Base):
     __tablename__ = 'prescriptions'
-    __table_args__ = (Index('idx_prescriptions_appointment_id', 'appointment_id'),)
+    __table_args__ = (
+        Index('idx_prescriptions_appointment_id', 'appointment_id'),
+        CheckConstraint(
+            'quantity IS NULL OR quantity > 0',
+            name='ck_prescriptions_quantity_positive',
+        ),
+    )
     id = Column(Integer, primary_key=True, index=True)
     appointment_id = Column(Integer, ForeignKey('appointments.id'), nullable=False, unique=True)
     diagnosis = Column(Text)
     medicine = Column(String(150))
+    quantity = Column(Integer, nullable=True)
     dosage = Column(Text)
     notes = Column(Text)
     created_at = Column(TIMESTAMP, server_default=func.now())

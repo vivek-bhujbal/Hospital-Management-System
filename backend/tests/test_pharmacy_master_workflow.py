@@ -127,6 +127,7 @@ def test_admin_master_data_to_pharmacist_multi_batch_workflow(client, db, create
     assert client.get(
         "/pharmacy/suppliers?active_only=true", headers=pharmacist_auth,
     ).json() == []
+    assert client.get("/pharmacy/suppliers", headers=pharmacist_auth).json() == []
     blocked = client.post(
         "/pharmacy/inventory",
         json={
@@ -141,6 +142,78 @@ def test_admin_master_data_to_pharmacist_multi_batch_workflow(client, db, create
     history = client.get("/pharmacy/inventory?include_empty=true", headers=pharmacist_auth).json()
     assert {item["supplier_name"] for item in history} == {"ABC Pharmaceuticals Pvt Ltd"}
     assert all(item["supplier_status"] == "inactive" for item in history)
+
+
+def test_inactive_master_records_are_hidden_operationally_but_history_is_retained(
+    client, db, create_user, login
+):
+    admin_auth = headers(login(create_user("admin")))
+    pharmacist_auth = headers(login(create_user("pharmacist")))
+
+    category = MedicineCategory(name="Operational category", status="active")
+    supplier = Supplier(name="Operational supplier", status="active")
+    db.add_all([category, supplier])
+    db.flush()
+    medicine = Medicine(
+        name="Operational medicine",
+        category_id=category.id,
+        status="active",
+        minimum_stock_level=5,
+    )
+    db.add(medicine)
+    db.commit()
+
+    stock = {
+        "medicine_id": medicine.id,
+        "supplier_id": supplier.id,
+        "batch_number": "HISTORY-001",
+        "expiry_date": str(date.today() + timedelta(days=180)),
+        "quantity": 20,
+        "purchase_price": "2.00",
+        "selling_price": "3.00",
+    }
+    received = client.post(
+        "/admin/pharmacy/inventory", headers=admin_auth, json=stock
+    )
+    assert received.status_code == 201, received.text
+
+    deactivated = client.patch(
+        f"/admin/pharmacy/medicines/{medicine.id}",
+        headers=admin_auth,
+        json={"status": "inactive"},
+    )
+    assert deactivated.status_code == 200
+    assert client.get("/pharmacy/medicines", headers=pharmacist_auth).json() == []
+    stock.update(batch_number="BLOCKED-MEDICINE")
+    assert client.post(
+        "/pharmacy/inventory", headers=pharmacist_auth, json=stock
+    ).status_code == 400
+
+    reactivated = client.patch(
+        f"/admin/pharmacy/medicines/{medicine.id}",
+        headers=admin_auth,
+        json={"status": "active"},
+    )
+    assert reactivated.status_code == 200
+    category_disabled = client.patch(
+        f"/admin/pharmacy/categories/{category.id}",
+        headers=admin_auth,
+        json={"status": "inactive"},
+    )
+    assert category_disabled.status_code == 200
+    assert client.get("/pharmacy/categories", headers=pharmacist_auth).json() == []
+    assert client.get("/pharmacy/medicines", headers=pharmacist_auth).json() == []
+    stock.update(batch_number="BLOCKED-CATEGORY")
+    assert client.post(
+        "/admin/pharmacy/inventory", headers=admin_auth, json=stock
+    ).status_code == 400
+
+    history = client.get(
+        "/pharmacy/inventory?include_empty=true", headers=pharmacist_auth
+    ).json()
+    assert len(history) == 1
+    assert history[0]["batch_number"] == "HISTORY-001"
+    assert history[0]["medicine_name"] == "Operational medicine"
 
 
 def test_master_data_validation_and_soft_status_controls(client, db, create_user, login):

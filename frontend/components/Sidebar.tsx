@@ -8,7 +8,7 @@ import {
   ChevronRight, ClipboardCheck, ClipboardList, CreditCard, FileCheck2, FileHeart,
   FileText, FlaskConical, HeartPulse, Hospital, LayoutDashboard, LogOut, Microscope,
   PackageSearch, Pill, ReceiptIndianRupee, Settings, ShieldCheck, ShieldPlus,
-  History, Stethoscope, TestTube2, UserCog, UserPlus, Users, WalletCards, X,
+  History, Stethoscope, TestTube2, UserCog, UserPlus, Users, WalletCards, X, Boxes, Truck,
 } from 'lucide-react'
 
 import { logoutAction } from '@/app/actions/auth'
@@ -22,7 +22,7 @@ export interface MenuItem {
   icon: LucideIcon
   permission?: Permission
   permissions?: readonly Permission[]
-  group?: 'Overview' | 'Care workspace' | 'Operations' | 'Administration' | 'Governance'
+  group?: 'Overview' | 'Care workspace' | 'Operations' | 'Administration' | 'Governance' | 'Pharmacy management'
 }
 
 const MENU_ITEMS: Record<UserRole, readonly MenuItem[]> = {
@@ -55,7 +55,9 @@ const MENU_ITEMS: Record<UserRole, readonly MenuItem[]> = {
     { name: 'Patients', path: '/admin/patients', icon: FileHeart, permission: PERMISSIONS.PATIENTS_VIEW, group: 'Care workspace' },
     { name: 'Appointments', path: '/admin/appointments', icon: CalendarDays, permission: PERMISSIONS.APPOINTMENTS_VIEW, group: 'Operations' },
     { name: 'Billing', path: '/admin/billing', icon: WalletCards, permission: PERMISSIONS.BILLING_REPORT, group: 'Operations' },
-    { name: 'Pharmacy master', path: '/admin/pharmacy', icon: Pill, permission: PERMISSIONS.PHARMACY_MASTER_MANAGE, group: 'Administration' },
+    { name: 'Medicines', path: '/admin/pharmacy/medicines', icon: Pill, permission: PERMISSIONS.PHARMACY_MASTER_MANAGE, group: 'Pharmacy management' },
+    { name: 'Categories', path: '/admin/pharmacy/categories', icon: Boxes, permission: PERMISSIONS.PHARMACY_MASTER_MANAGE, group: 'Pharmacy management' },
+    { name: 'Suppliers', path: '/admin/pharmacy/suppliers', icon: Truck, permission: PERMISSIONS.PHARMACY_MASTER_MANAGE, group: 'Pharmacy management' },
   ],
   super_admin: [
     { name: 'Control center', path: '/super-admin/home', icon: LayoutDashboard, group: 'Overview' },
@@ -87,10 +89,10 @@ const MENU_ITEMS: Record<UserRole, readonly MenuItem[]> = {
     { name: 'Nursing tasks', path: '/nurse/tasks', icon: ClipboardCheck, permission: PERMISSIONS.NURSING_MANAGE_TASKS, group: 'Operations' },
   ],
   pharmacist: [
-    { name: 'Pharmacy overview', path: '/pharmacist/home', icon: LayoutDashboard, group: 'Overview' },
+    { name: 'Dashboard', path: '/pharmacist/home', icon: LayoutDashboard, group: 'Overview' },
     { name: 'Prescriptions', path: '/pharmacist/prescriptions', icon: FileCheck2, permission: PERMISSIONS.PHARMACY_VIEW, group: 'Care workspace' },
     { name: 'Dispensing', path: '/pharmacist/dispensing', icon: Pill, permission: PERMISSIONS.PHARMACY_DISPENSE, group: 'Operations' },
-    { name: 'Inventory & stock', path: '/pharmacist/inventory', icon: PackageSearch, permission: PERMISSIONS.PHARMACY_INVENTORY, group: 'Operations' },
+    { name: 'Inventory', path: '/pharmacist/inventory', icon: PackageSearch, permission: PERMISSIONS.PHARMACY_INVENTORY, group: 'Operations' },
   ],
   lab_technician: [
     { name: 'Lab overview', path: '/lab/home', icon: LayoutDashboard, group: 'Overview' },

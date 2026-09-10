@@ -205,8 +205,13 @@ export default async function DoctorConsultation({ searchParams }: { searchParam
               <textarea id="diagnosis" name="diagnosis" required maxLength={4000} rows={3} className="mt-2 block w-full rounded-xl border border-slate-300 p-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-700" htmlFor="medicine">Medicines</label>
-              <input id="medicine" name="medicine" required maxLength={150} placeholder="Enter one or more medicines" className="mt-2 block w-full rounded-xl border border-slate-300 p-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              <label className="block text-sm font-semibold text-slate-700" htmlFor="medicine">Medicine</label>
+              <input id="medicine" name="medicine" required maxLength={150} placeholder="Enter the medicine name" className="mt-2 block w-full rounded-xl border border-slate-300 p-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700" htmlFor="quantity">Prescribed quantity</label>
+              <input id="quantity" name="quantity" type="number" min="1" required placeholder="Example: 10" className="mt-2 block w-full rounded-xl border border-slate-300 p-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              <p className="mt-1.5 text-xs text-slate-500">Enter the total number of units the pharmacy should dispense.</p>
             </div>
             <div>
               <label className="block text-sm font-semibold text-slate-700" htmlFor="dosage">Dosage</label>

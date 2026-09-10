@@ -46,6 +46,7 @@ export interface DoctorPrescription {
   appointment_id: number
   diagnosis: string | null
   medicine: string | null
+  quantity: number | null
   dosage: string | null
   notes: string | null
   created_at: string

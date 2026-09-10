@@ -118,6 +118,25 @@ def test_pharmacy_master_migration_keeps_fresh_database_empty(tmp_path):
         assert "status" in supplier_columns
 
 
+def test_prescription_quantity_migration_is_additive_and_nullable(tmp_path):
+    database_path = tmp_path / "prescription-quantity.db"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    previous_url = settings.DATABASE_URL
+    settings.DATABASE_URL = database_url
+    try:
+        command.upgrade(_config(database_url), "head")
+    finally:
+        settings.DATABASE_URL = previous_url
+
+    engine = create_engine(database_url)
+    with engine.connect() as connection:
+        columns = {
+            column["name"]: column
+            for column in inspect(connection).get_columns("prescriptions")
+        }
+        assert columns["quantity"]["nullable"] is True
+
+
 def test_migration_refuses_to_drop_populated_unmanaged_enterprise_table(tmp_path):
     database_path = tmp_path / "populated-enterprise.db"
     database_url = f"sqlite:///{database_path.as_posix()}"

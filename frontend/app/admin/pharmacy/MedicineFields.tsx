@@ -67,6 +67,5 @@ export default function MedicineFields({ item, categories, medicines, specializa
     <Dropdown label="Unit" name="unit" value={unit} options={[...MEDICINE_UNITS, ...medicines.map(record => record.unit || '')]} onChange={setUnit} required />
     <label><span className="mb-1.5 block text-sm font-semibold">Low-stock alert threshold (not quantity)</span><input name="minimum_stock_level" type="number" defaultValue={item?.minimum_stock_level ?? 10} required min={0} max={1000000} className="hms-input" /><span className="mt-1 block text-xs text-slate-500">To record actual quantity, save the medicine then use Add actual stock.</span></label>
     <label className="sm:col-span-2"><span className="mb-1.5 block text-sm font-semibold">Description</span><textarea name="description" defaultValue={item?.description || ''} maxLength={1000} rows={3} className="hms-input" /></label>
-    <label><span className="mb-1.5 block text-sm font-semibold">Status</span><select name="status" defaultValue={item?.status || 'active'} className="hms-input"><option value="active">Active</option><option value="inactive">Inactive</option></select></label>
   </>
 }

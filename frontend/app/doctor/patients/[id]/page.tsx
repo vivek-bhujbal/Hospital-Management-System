@@ -258,7 +258,7 @@ export default async function PatientHistory({ params }: { params: { id: string 
                   </p>
                   <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
                     <div><dt className="font-semibold text-slate-700 dark:text-slate-300">Diagnosis</dt><dd className="mt-1 text-slate-950 dark:text-white">{prescription.diagnosis || 'Not recorded'}</dd></div>
-                    <div><dt className="font-semibold text-slate-700 dark:text-slate-300">Medicines</dt><dd className="mt-1 text-slate-950 dark:text-white">{prescription.medicine || 'Not recorded'}</dd></div>
+                    <div><dt className="font-semibold text-slate-700 dark:text-slate-300">Medicine / quantity</dt><dd className="mt-1 text-slate-950 dark:text-white">{prescription.medicine || 'Not recorded'}{prescription.quantity ? ` · ${prescription.quantity} units` : ''}</dd></div>
                     <div><dt className="font-semibold text-slate-700 dark:text-slate-300">Dosage</dt><dd className="mt-1 text-slate-950 dark:text-white">{prescription.dosage || 'Not recorded'}</dd></div>
                     <div><dt className="font-semibold text-slate-700 dark:text-slate-300">Instructions / notes</dt><dd className="mt-1 whitespace-pre-line text-slate-950 dark:text-white">{prescription.notes || 'Not recorded'}</dd></div>
                   </dl>

@@ -324,6 +324,7 @@ class PrescriptionBase(BaseModel):
     appointment_id: int
     diagnosis: Optional[str] = None
     medicine: Optional[str] = None
+    quantity: Optional[int] = Field(default=None, gt=0)
     dosage: Optional[str] = None
     notes: Optional[str] = None
 
@@ -331,6 +332,7 @@ class PrescriptionCreate(PrescriptionBase):
     appointment_id: int = Field(gt=0)
     diagnosis: str = Field(min_length=1, max_length=4000)
     medicine: str = Field(min_length=1, max_length=150)
+    quantity: int = Field(gt=0, le=1000000)
     dosage: str = Field(min_length=1, max_length=2000)
     notes: Optional[str] = Field(default=None, max_length=8000)
 
@@ -843,8 +845,16 @@ class PharmacyPrescriptionAction(BaseModel):
 
 class InventoryAdjustmentRequest(BaseModel):
     action: Literal['add_stock', 'update_stock', 'expired', 'damaged']
-    quantity: int = Field(gt=0)
+    quantity: int = Field(ge=0)
     reason: Optional[str] = Field(default=None, max_length=255)
+
+    @model_validator(mode='after')
+    def validate_adjustment(self):
+        if self.action != 'update_stock' and self.quantity == 0:
+            raise ValueError('Adjustment quantity must be greater than zero')
+        if not (self.reason or '').strip():
+            raise ValueError('An adjustment reason is required')
+        return self
 
 
 class InventoryBatchCreate(BaseModel):
@@ -875,6 +885,22 @@ class DispensingResponse(BaseModel):
     dispensed_by: int
     # omitting items for simplicity, or we can include them if needed
     model_config = ConfigDict(from_attributes=True)
+
+
+class DispensingHistoryResponse(BaseModel):
+    id: int
+    prescription_id: int
+    patient_id: int
+    patient_name: str
+    medicine_id: int
+    medicine_name: str
+    batch_id: int
+    batch_number: str
+    quantity: int
+    pharmacist_id: int
+    pharmacist_name: str
+    status: Literal['completed', 'voided']
+    dispensed_at: datetime
 
 
 class PurchaseItemCreate(BaseModel):

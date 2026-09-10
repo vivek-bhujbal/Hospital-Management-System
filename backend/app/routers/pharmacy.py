@@ -17,7 +17,7 @@ from app.models.all_models import (
     Purchase, PurchaseItem, StockTransaction, Supplier, User,
 )
 from app.schemas.all_schemas import (
-    DispenseRequest, DispensingResponse, InventoryAdjustmentRequest,
+    DispenseRequest, DispensingHistoryResponse, DispensingResponse, InventoryAdjustmentRequest,
     InventoryBatchCreate, MedicineBatchCreate, MedicineBatchResponse,
     MedicineCategoryResponse, MedicineResponse,
     PharmacyPrescriptionAction, PurchaseCreate, PurchaseResponse,
@@ -34,8 +34,39 @@ router = APIRouter(
 )
 
 
-def _prescription_record(row):
+def _prescription_record(db: Session, row):
     prescription, appointment, patient, doctor, review, dispensing = row
+    matching_medicine = None
+    available_quantity = 0
+    if (prescription.medicine or "").strip():
+        prescribed_name = prescription.medicine.strip().casefold()
+        matching_medicine = (
+            db.query(Medicine)
+            .join(MedicineCategory)
+            .filter(
+                Medicine.status == "active",
+                MedicineCategory.status == "active",
+                or_(
+                    func.lower(func.trim(Medicine.name)) == prescribed_name,
+                    func.lower(func.trim(Medicine.generic_name)) == prescribed_name,
+                ),
+            )
+            .first()
+        )
+        if matching_medicine:
+            available_quantity = db.query(func.sum(MedicineBatch.available_quantity)).filter(
+                MedicineBatch.medicine_id == matching_medicine.id,
+                MedicineBatch.available_quantity > 0,
+                MedicineBatch.expiry_date >= date.today(),
+                or_(
+                    MedicineBatch.supplier_id.is_(None),
+                    MedicineBatch.supplier_id.in_(
+                        db.query(Supplier.id).filter(Supplier.status == "active")
+                    ),
+                ),
+            ).scalar() or 0
+    reviewer = db.get(User, review.updated_by) if review else None
+    verifier = db.get(User, review.verified_by) if review and review.verified_by else None
     return {
         "id": prescription.id,
         "appointment_id": appointment.id,
@@ -45,6 +76,7 @@ def _prescription_record(row):
         "doctor_name": doctor.name,
         "diagnosis": prescription.diagnosis,
         "medicine": prescription.medicine,
+        "quantity": prescription.quantity,
         "dosage": prescription.dosage,
         "instructions": prescription.notes,
         "prescription_date": prescription.created_at,
@@ -52,6 +84,12 @@ def _prescription_record(row):
         "appointment_status": appointment.status,
         "pharmacy_status": review.status if review else "pending",
         "rejection_reason": review.rejection_reason if review else None,
+        "reviewed_by_name": reviewer.name if reviewer else None,
+        "reviewed_at": review.updated_at if review else None,
+        "verified_by_name": verifier.name if verifier else None,
+        "verified_at": review.verified_at if review else None,
+        "matched_medicine_id": matching_medicine.id if matching_medicine else None,
+        "available_quantity": int(available_quantity),
         "dispensing_id": dispensing.id if dispensing else None,
     }
 
@@ -89,7 +127,7 @@ def list_prescriptions_for_dispensing(
             Prescription.medicine.ilike(value),
         ))
     rows = query.order_by(Prescription.created_at.desc()).all()
-    records = [_prescription_record(row) for row in rows]
+    records = [_prescription_record(db, row) for row in rows]
     if status:
         records = [record for record in records if record["pharmacy_status"] == status]
     return records
@@ -104,7 +142,7 @@ def get_prescription_for_dispensing(
     row = _prescription_query(db).filter(Prescription.id == prescription_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Prescription not found")
-    return _prescription_record(row)
+    return _prescription_record(db, row)
 
 
 @router.post("/prescriptions/{prescription_id}/action")
@@ -113,8 +151,18 @@ def update_prescription_workflow(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(Permission.pharmacy_dispense)),
 ):
-    if not db.get(Prescription, prescription_id):
+    prescription = db.get(Prescription, prescription_id)
+    if not prescription:
         raise HTTPException(status_code=404, detail="Prescription not found")
+    if payload.action == "verify" and (
+        not (prescription.medicine or "").strip()
+        or not (prescription.dosage or "").strip()
+        or prescription.quantity is None
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Prescription is incomplete and requires Doctor clarification.",
+        )
     review = db.query(PharmacyPrescriptionReview).filter_by(
         prescription_id=prescription_id
     ).with_for_update().first()
@@ -129,6 +177,19 @@ def update_prescription_workflow(
             status_code=409,
             detail=f"Action {payload.action} is not allowed while prescription is {current_status}",
         )
+    if payload.action == "mark_for_dispensing":
+        row = _prescription_query(db).filter(Prescription.id == prescription_id).first()
+        record = _prescription_record(db, row)
+        if record["matched_medicine_id"] is None:
+            raise HTTPException(
+                status_code=409,
+                detail="No active medicine master record matches this prescription.",
+            )
+        if record["available_quantity"] < prescription.quantity:
+            raise HTTPException(
+                status_code=409,
+                detail="Insufficient available stock for this medicine.",
+            )
     if review is None:
         review = PharmacyPrescriptionReview(
             prescription_id=prescription_id,
@@ -158,15 +219,41 @@ def pharmacy_dashboard(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission(Permission.pharmacy_view)),
 ):
-    records = [_prescription_record(row) for row in _prescription_query(db).all()]
+    records = [
+        _prescription_record(db, row)
+        for row in _prescription_query(db).order_by(Prescription.created_at.desc()).all()
+    ]
     today = date.today()
     batches = db.query(MedicineBatch).all()
-    batch_records = [_batch_record(db, item) for item in batches]
-    low_stock = len({
-        item["medicine_id"] for item in batch_records
-        if item["stock_status"] == "low_stock"
-    })
-    out_of_stock = sum(1 for item in batches if item.available_quantity == 0)
+    suppliers = {supplier.id: supplier for supplier in db.query(Supplier).all()}
+    active_medicines = (
+        db.query(Medicine)
+        .join(MedicineCategory)
+        .filter(Medicine.status == "active", MedicineCategory.status == "active")
+        .all()
+    )
+    usable_totals = {
+        medicine.id: sum(
+            batch.available_quantity for batch in batches
+            if (
+                batch.medicine_id == medicine.id
+                and batch.expiry_date >= today
+                and (
+                    batch.supplier_id is None
+                    or (
+                        suppliers.get(batch.supplier_id) is not None
+                        and suppliers[batch.supplier_id].status == "active"
+                    )
+                )
+            )
+        )
+        for medicine in active_medicines
+    }
+    low_stock = sum(
+        0 < usable_totals[medicine.id] <= medicine.minimum_stock_level
+        for medicine in active_medicines
+    )
+    out_of_stock = sum(usable_totals[medicine.id] == 0 for medicine in active_medicines)
     expired = sum(1 for item in batches if item.available_quantity > 0 and item.expiry_date < today)
     dispensed_today = db.query(Dispensing).filter(
         func.date(Dispensing.dispensed_at) == today
@@ -187,41 +274,45 @@ def pharmacy_dashboard(
 
 @router.get("/categories", response_model=List[MedicineCategoryResponse])
 def list_categories(
-    active_only: bool = False,
     db: Session = Depends(get_db),
     _: User = Depends(require_permission(Permission.pharmacy_view)),
 ):
-    query = db.query(MedicineCategory)
-    if active_only:
-        query = query.filter(MedicineCategory.status == "active")
-    return query.order_by(MedicineCategory.name).all()
+    return (
+        db.query(MedicineCategory)
+        .filter(MedicineCategory.status == "active")
+        .order_by(MedicineCategory.name)
+        .all()
+    )
 
 
 @router.get("/suppliers", response_model=List[SupplierResponse])
 def list_suppliers(
-    active_only: bool = False,
     db: Session = Depends(get_db),
     _: User = Depends(require_permission(Permission.pharmacy_view)),
 ):
-    query = db.query(Supplier)
-    if active_only:
-        query = query.filter(Supplier.status == "active")
-    return query.order_by(Supplier.name).all()
+    return (
+        db.query(Supplier)
+        .filter(Supplier.status == "active")
+        .order_by(Supplier.name)
+        .all()
+    )
 
 
 @router.get("/medicines", response_model=List[MedicineResponse])
 def get_medicines(
-    active_only: bool = False,
     db: Session = Depends(get_db),
     _: User = Depends(require_permission(Permission.pharmacy_view)),
 ):
-    query = db.query(Medicine)
-    if active_only:
-        query = query.join(MedicineCategory).filter(
+    return (
+        db.query(Medicine)
+        .join(MedicineCategory)
+        .filter(
             Medicine.status == "active",
             MedicineCategory.status == "active",
         )
-    return query.order_by(Medicine.name).all()
+        .order_by(Medicine.name)
+        .all()
+    )
 
 
 def _batch_record(db: Session, batch: MedicineBatch):
@@ -233,9 +324,23 @@ def _batch_record(db: Session, batch: MedicineBatch):
     medicine_available = db.query(func.sum(MedicineBatch.available_quantity)).filter(
         MedicineBatch.medicine_id == batch.medicine_id,
         MedicineBatch.expiry_date >= today,
+        or_(
+            MedicineBatch.supplier_id.is_(None),
+            MedicineBatch.supplier_id.in_(
+                db.query(Supplier.id).filter(Supplier.status == "active")
+            ),
+        ),
     ).scalar() or 0
     if batch.expiry_date < today and batch.available_quantity > 0:
         stock_status = "expired"
+    elif (
+        not medicine
+        or medicine.status != "active"
+        or not category
+        or category.status != "active"
+        or (supplier is not None and supplier.status != "active")
+    ):
+        stock_status = "out_of_stock"
     elif batch.available_quantity == 0:
         stock_status = "out_of_stock"
     elif batch.expiry_date <= cutoff:
@@ -253,6 +358,8 @@ def _batch_record(db: Session, batch: MedicineBatch):
         "category_name": category.name if category else None,
         "unit": medicine.unit if medicine else None,
         "minimum_stock_level": medicine.minimum_stock_level if medicine else 0,
+        "medicine_status": medicine.status if medicine else None,
+        "category_status": category.status if category else None,
         "supplier_id": batch.supplier_id,
         "supplier_name": supplier.name if supplier else None,
         "supplier_status": supplier.status if supplier else None,
@@ -271,17 +378,33 @@ def get_inventory_summary(
     today = date.today()
     cutoff = today + timedelta(days=settings.PHARMACY_EXPIRY_WARNING_DAYS)
     batches = db.query(MedicineBatch).all()
-    active_medicines = db.query(Medicine).filter(Medicine.status == "active").all()
+    suppliers = {supplier.id: supplier for supplier in db.query(Supplier).all()}
+    active_medicines = (
+        db.query(Medicine)
+        .join(MedicineCategory)
+        .filter(Medicine.status == "active", MedicineCategory.status == "active")
+        .all()
+    )
     valid_totals = {
         medicine.id: sum(
             batch.available_quantity for batch in batches
-            if batch.medicine_id == medicine.id and batch.expiry_date >= today
+            if (
+                batch.medicine_id == medicine.id
+                and batch.expiry_date >= today
+                and (
+                    batch.supplier_id is None
+                    or (
+                        suppliers.get(batch.supplier_id) is not None
+                        and suppliers[batch.supplier_id].status == "active"
+                    )
+                )
+            )
         )
         for medicine in active_medicines
     }
     return {
         "total_medicines": len(active_medicines),
-        "total_stock_quantity": sum(batch.available_quantity for batch in batches),
+        "total_stock_quantity": sum(valid_totals.values()),
         "low_stock_items": sum(
             0 < valid_totals[medicine.id] <= medicine.minimum_stock_level
             for medicine in active_medicines
@@ -334,6 +457,25 @@ def adjust_inventory_batch(
     batch = db.query(MedicineBatch).filter(MedicineBatch.id == batch_id).with_for_update().first()
     if not batch:
         raise HTTPException(status_code=404, detail="Inventory batch not found")
+    if payload.action == "add_stock":
+        medicine = db.get(Medicine, batch.medicine_id)
+        category = db.get(MedicineCategory, medicine.category_id) if medicine else None
+        supplier = db.get(Supplier, batch.supplier_id) if batch.supplier_id else None
+        if not medicine or medicine.status != "active":
+            raise HTTPException(
+                status_code=400,
+                detail="Selected medicine is inactive and cannot receive additional stock.",
+            )
+        if not category or category.status != "active":
+            raise HTTPException(
+                status_code=400,
+                detail="Selected medicine belongs to an inactive category and cannot receive additional stock.",
+            )
+        if supplier is not None and supplier.status != "active":
+            raise HTTPException(
+                status_code=400,
+                detail="Selected supplier is inactive and cannot be used for additional stock.",
+            )
     old_available = batch.available_quantity
     if payload.action == "add_stock":
         if batch.expiry_date <= date.today():
@@ -450,12 +592,40 @@ def receive_purchase(
     return purchase
 
 
-@router.get("/dispensings", response_model=List[DispensingResponse])
+@router.get("/dispensings", response_model=List[DispensingHistoryResponse])
 def list_dispensings(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission(Permission.pharmacy_view)),
 ):
-    return db.query(Dispensing).order_by(Dispensing.dispensed_at.desc()).limit(200).all()
+    rows = (
+        db.query(Dispensing, DispensingItem, Patient, Medicine, MedicineBatch, User)
+        .join(DispensingItem, DispensingItem.dispensing_id == Dispensing.id)
+        .join(Patient, Patient.id == Dispensing.patient_id)
+        .join(Medicine, Medicine.id == DispensingItem.medicine_id)
+        .join(MedicineBatch, MedicineBatch.id == DispensingItem.batch_id)
+        .join(User, User.id == Dispensing.dispensed_by)
+        .order_by(Dispensing.dispensed_at.desc(), Dispensing.id.desc())
+        .limit(200)
+        .all()
+    )
+    return [
+        {
+            "id": dispensing.id,
+            "prescription_id": dispensing.prescription_id,
+            "patient_id": patient.id,
+            "patient_name": patient.name,
+            "medicine_id": medicine.id,
+            "medicine_name": medicine.name,
+            "batch_id": batch.id,
+            "batch_number": batch.batch_number,
+            "quantity": item.quantity,
+            "pharmacist_id": pharmacist.id,
+            "pharmacist_name": pharmacist.name,
+            "status": dispensing.status,
+            "dispensed_at": dispensing.dispensed_at,
+        }
+        for dispensing, item, patient, medicine, batch, pharmacist in rows
+    ]
 
 
 @router.post("/dispense", response_model=DispensingResponse, status_code=201)
@@ -465,7 +635,7 @@ def dispense_prescription(
 ):
     existing = db.query(Dispensing).filter_by(prescription_id=payload.prescription_id).first()
     if existing:
-        raise HTTPException(status_code=409, detail="Prescription has already been fully dispensed")
+        raise HTTPException(status_code=409, detail="This prescription has already been dispensed.")
     prescription = db.get(Prescription, payload.prescription_id)
     if not prescription:
         raise HTTPException(status_code=404, detail="Prescription not found")
@@ -483,21 +653,36 @@ def dispense_prescription(
     if not appointment:
         raise HTTPException(status_code=409, detail="Prescription appointment is missing")
 
-    dispensing = Dispensing(
-        prescription_id=prescription.id, patient_id=appointment.patient_id,
-        total_amount=Decimal("0.00"), status="completed", dispensed_by=current_user.id,
-    )
-    db.add(dispensing)
-    db.flush()
     total = Decimal("0.00")
     try:
+        dispensing = Dispensing(
+            prescription_id=prescription.id, patient_id=appointment.patient_id,
+            total_amount=Decimal("0.00"), status="completed", dispensed_by=current_user.id,
+        )
+        db.add(dispensing)
+        db.flush()
         for requested in payload.items:
             batch = db.query(MedicineBatch).filter(MedicineBatch.id == requested.batch_id).with_for_update().first()
             medicine = db.get(Medicine, requested.medicine_id)
             if not batch or not medicine:
                 raise HTTPException(status_code=404, detail="Medicine or batch not found")
             if medicine.status != "active":
-                raise HTTPException(status_code=400, detail="Inactive medicine cannot be dispensed")
+                raise HTTPException(
+                    status_code=400,
+                    detail="Selected medicine is inactive and cannot be dispensed.",
+                )
+            category = db.get(MedicineCategory, medicine.category_id)
+            if not category or category.status != "active":
+                raise HTTPException(
+                    status_code=400,
+                    detail="Selected medicine belongs to an inactive category and cannot be dispensed.",
+                )
+            supplier = db.get(Supplier, batch.supplier_id) if batch.supplier_id else None
+            if supplier and supplier.status != "active":
+                raise HTTPException(
+                    status_code=400,
+                    detail="Medicine from an inactive supplier cannot be dispensed.",
+                )
             prescribed_name = (prescription.medicine or "").strip().casefold()
             valid_names = {medicine.name.strip().casefold(), (medicine.generic_name or "").strip().casefold()}
             if prescribed_name not in valid_names:
@@ -505,9 +690,20 @@ def dispense_prescription(
             if batch.medicine_id != medicine.id:
                 raise HTTPException(status_code=400, detail="Batch does not match selected medicine")
             if batch.expiry_date < date.today():
-                raise HTTPException(status_code=400, detail="Expired medicine cannot be dispensed")
+                raise HTTPException(status_code=400, detail="Expired medicine cannot be dispensed.")
+            if prescription.quantity is not None and requested.quantity != prescription.quantity:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"This prescription requires exactly {prescription.quantity} units; "
+                        "partial dispensing is not supported."
+                    ),
+                )
             if batch.available_quantity < requested.quantity:
-                raise HTTPException(status_code=409, detail="Insufficient stock")
+                raise HTTPException(
+                    status_code=409,
+                    detail="Insufficient available stock for this medicine.",
+                )
             batch.available_quantity -= requested.quantity
             line_total = batch.selling_price * requested.quantity
             total += line_total
@@ -550,6 +746,6 @@ def dispense_prescription(
         raise
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Prescription dispensing conflicted with another request")
+        raise HTTPException(status_code=409, detail="This prescription has already been dispensed.")
     db.refresh(dispensing)
     return dispensing

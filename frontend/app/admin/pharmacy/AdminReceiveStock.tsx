@@ -7,14 +7,15 @@ import { Modal } from '@/components/ui/Modal'
 import SubmitButton from '@/components/SubmitButton'
 import StockBatchFields from '@/components/pharmacy/StockBatchFields'
 import { useToast } from '@/components/ToastProvider'
-import type { Medicine, Supplier } from '@/lib/pharmacistTypes'
+import type { Medicine, MedicineCategory, Supplier } from '@/lib/pharmacistTypes'
 
-export default function AdminReceiveStock({ medicines, suppliers }: { medicines: Medicine[]; suppliers: Supplier[] }) {
+export default function AdminReceiveStock({ medicines, categories, suppliers }: { medicines: Medicine[]; categories: MedicineCategory[]; suppliers: Supplier[] }) {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
   const router = useRouter()
   const { showToast } = useToast()
-  const activeMedicines = medicines.filter(item => item.status === 'active')
+  const activeCategoryIds = new Set(categories.filter(item => item.status === 'active').map(item => item.id))
+  const activeMedicines = medicines.filter(item => item.status === 'active' && activeCategoryIds.has(item.category_id))
   const activeSuppliers = suppliers.filter(item => item.status === 'active')
   async function save(data: FormData) {
     setError('')

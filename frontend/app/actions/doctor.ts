@@ -77,11 +77,12 @@ export async function completeConsultationAction(formData: FormData) {
   const appointmentId = Number(formValue(formData, 'appointment_id'))
   const diagnosis = formValue(formData, 'diagnosis')
   const medicine = formValue(formData, 'medicine')
+  const quantity = Number(formValue(formData, 'quantity'))
   const dosage = formValue(formData, 'dosage')
   const instructions = formValue(formData, 'instructions')
   const clinicalNotes = formValue(formData, 'clinical_notes')
-  if (!Number.isInteger(appointmentId) || appointmentId <= 0 || !diagnosis || !medicine || !dosage) {
-    return { error: 'Appointment, diagnosis, medicines, and dosage are required.' }
+  if (!Number.isInteger(appointmentId) || appointmentId <= 0 || !diagnosis || !medicine || !Number.isInteger(quantity) || quantity <= 0 || !dosage) {
+    return { error: 'Appointment, diagnosis, medicine, prescribed quantity, and dosage are required.' }
   }
   const notes = [
     instructions ? `Instructions: ${instructions}` : '',
@@ -91,6 +92,7 @@ export async function completeConsultationAction(formData: FormData) {
     appointment_id: appointmentId,
     diagnosis,
     medicine,
+    quantity,
     dosage,
     notes,
   }

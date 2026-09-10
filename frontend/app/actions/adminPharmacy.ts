@@ -30,6 +30,9 @@ async function mutate(path: string, method: 'POST' | 'PATCH', body: object): Pro
     return { error: 'Unable to save pharmacy master record.' }
   }
   revalidatePath('/admin/pharmacy')
+  revalidatePath('/admin/pharmacy/suppliers')
+  revalidatePath('/admin/pharmacy/categories')
+  revalidatePath('/admin/pharmacy/medicines')
   revalidatePath('/pharmacist/inventory')
   revalidatePath('/pharmacist/home')
   revalidatePath('/pharmacist/dispensing')
@@ -38,28 +41,30 @@ async function mutate(path: string, method: 'POST' | 'PATCH', body: object): Pro
 
 export async function saveSupplierAction(data: FormData) {
   const id = text(data, 'id')
-  return mutate(`/admin/pharmacy/suppliers${id ? `/${id}` : ''}`, id ? 'PATCH' : 'POST', {
+  const payload: Record<string, unknown> = {
     name: text(data, 'name'),
     contact_person: text(data, 'contact_person') || null,
     phone: text(data, 'phone') || null,
     email: text(data, 'email') || null,
     address: text(data, 'address') || null,
-    status: text(data, 'status') || 'active',
-  })
+  }
+  if (!id) payload.status = 'active'
+  return mutate(`/admin/pharmacy/suppliers${id ? `/${id}` : ''}`, id ? 'PATCH' : 'POST', payload)
 }
 
 export async function saveCategoryAction(data: FormData) {
   const id = text(data, 'id')
-  return mutate(`/admin/pharmacy/categories${id ? `/${id}` : ''}`, id ? 'PATCH' : 'POST', {
+  const payload: Record<string, unknown> = {
     name: text(data, 'name'),
     description: text(data, 'description') || null,
-    status: text(data, 'status') || 'active',
-  })
+  }
+  if (!id) payload.status = 'active'
+  return mutate(`/admin/pharmacy/categories${id ? `/${id}` : ''}`, id ? 'PATCH' : 'POST', payload)
 }
 
 export async function saveMedicineAction(data: FormData) {
   const id = text(data, 'id')
-  return mutate(`/admin/pharmacy/medicines${id ? `/${id}` : ''}`, id ? 'PATCH' : 'POST', {
+  const payload: Record<string, unknown> = {
     name: text(data, 'name'),
     generic_name: text(data, 'generic_name') || null,
     sku: text(data, 'sku') || null,
@@ -68,8 +73,9 @@ export async function saveMedicineAction(data: FormData) {
     unit: text(data, 'unit') || null,
     description: text(data, 'description') || null,
     minimum_stock_level: Number(text(data, 'minimum_stock_level') || '10'),
-    status: text(data, 'status') || 'active',
-  })
+  }
+  if (!id) payload.status = 'active'
+  return mutate(`/admin/pharmacy/medicines${id ? `/${id}` : ''}`, id ? 'PATCH' : 'POST', payload)
 }
 
 export async function setMasterStatusAction(kind: 'suppliers' | 'categories' | 'medicines', id: number, status: 'active' | 'inactive') {

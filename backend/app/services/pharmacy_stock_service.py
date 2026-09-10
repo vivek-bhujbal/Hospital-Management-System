@@ -4,7 +4,14 @@ from fastapi import HTTPException, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models.all_models import Medicine, MedicineBatch, StockTransaction, Supplier, User
+from app.models.all_models import (
+    Medicine,
+    MedicineBatch,
+    MedicineCategory,
+    StockTransaction,
+    Supplier,
+    User,
+)
 from app.schemas.all_schemas import InventoryBatchCreate
 from app.services.audit_service import record_audit_event, request_audit_metadata
 
@@ -12,12 +19,24 @@ from app.services.audit_service import record_audit_event, request_audit_metadat
 def receive_stock(db: Session, payload: InventoryBatchCreate, actor: User, request: Request) -> MedicineBatch:
     medicine = db.get(Medicine, payload.medicine_id)
     if not medicine or medicine.status != "active":
-        raise HTTPException(status_code=400, detail="Medicine does not exist or is inactive")
+        raise HTTPException(
+            status_code=400,
+            detail="Selected medicine is inactive and cannot be received.",
+        )
+    category = db.get(MedicineCategory, medicine.category_id)
+    if not category or category.status != "active":
+        raise HTTPException(
+            status_code=400,
+            detail="Selected medicine belongs to an inactive category and cannot be received.",
+        )
     supplier = db.get(Supplier, payload.supplier_id)
     if not supplier or supplier.status != "active":
-        raise HTTPException(status_code=400, detail="Select an active supplier")
+        raise HTTPException(
+            status_code=400,
+            detail="Selected supplier is inactive and cannot be used for new stock receipt.",
+        )
     if payload.expiry_date <= date.today():
-        raise HTTPException(status_code=400, detail="Expired stock cannot be added")
+        raise HTTPException(status_code=400, detail="Expiry date must be in the future.")
     batch = MedicineBatch(
         **payload.model_dump(), available_quantity=payload.quantity,
     )
@@ -40,7 +59,6 @@ def receive_stock(db: Session, payload: InventoryBatchCreate, actor: User, reque
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="This batch already exists for the medicine")
+        raise HTTPException(status_code=409, detail="This medicine batch already exists.")
     db.refresh(batch)
     return batch
-

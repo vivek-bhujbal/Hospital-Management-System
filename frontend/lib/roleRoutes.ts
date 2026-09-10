@@ -40,6 +40,9 @@ const ADMIN_ROUTES: ReadonlySet<string> = new Set([
   '/admin/billing',
   '/admin/staff',
   '/admin/pharmacy',
+  '/admin/pharmacy/medicines',
+  '/admin/pharmacy/categories',
+  '/admin/pharmacy/suppliers',
 ])
 const MANAGER_ROUTES: ReadonlySet<string> = new Set([
   '/manager/home',

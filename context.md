@@ -1,6 +1,6 @@
 # Hospital Management System — Project Context
 
-> Last reconciled with the complete working tree based on branch `main` at commit `c56a199` on 2026-09-05.
+> Last reconciled with the complete working tree based on branch `main` at commit `5cc16d0` plus the current uncommitted Admin Pharmacy Management and Pharmacist Operations changes on 2026-09-10.
 >
 > This document describes the application as it currently exists in code. When this file conflicts with the README or older walkthrough notes, treat the implementation files named here as the source of truth.
 
@@ -13,14 +13,23 @@ The application supports thirteen user roles. The original roles remain backward
 - `patient`: self-registers, verifies email, books appointments, and views personal clinical and billing information.
 - `doctor`: views assigned appointments and patient history, updates a doctor profile, and completes consultations by issuing prescriptions.
 - `receptionist`: registers walk-in patients, schedules and checks in appointments, and collects payments, subject to per-employee permissions.
-- `admin`: views hospital-wide metrics and manages doctors, all non-administrator staff accounts, receptionist page permissions, contacts, shifts, patients, appointments, and billing reports.
+- `admin`: views hospital-wide metrics and manages doctors, all non-administrator staff accounts, receptionist page permissions, contacts, shifts, patients, appointments, billing reports, and pharmacy master data/stock receipt.
 
-Enterprise roles are `super_admin`, `hospital_manager`, `nurse`, `pharmacist`, `lab_technician`, `radiologist`, `accountant`, `insurance_officer`, and `ambulance_staff`. Hospital Manager is a read-only hospital-operations role; it monitors patient flow, appointments, staffing, doctors, departments, reports, and revenue summaries without accessing clinical, financial-transaction, or specialist operational modules. Pharmacist is an exact-role pharmacy operator with read-only access to doctor prescriptions, a separate verification state machine, batch inventory adjustments, and atomic dispensing. Lab Technician is an exact-role laboratory operator with assignment-scoped orders, guarded sample/test transitions, draft results, and immutable finalized results. Radiologist is an exact-role imaging operator with assignment-scoped orders, one study per order, guarded interpretation/report transitions, and immutable finalized report versions with explicit amendments. Accountant is an exact-role finance operator with appointment-backed invoices, duplicate-safe payments, append-only audited expenses, and non-clinical financial reporting. Insurance Officer is an exact-role insurance operator with policy verification, one claim per invoice, guarded review/decision/settlement transitions, required-document tracking, and immutable officer-attributed action history. Ambulance Staff is an exact-role transport operator with assigned vehicles, shared pending requests, staff-owned trips, guarded status transitions, and audited history. The other backend modules cover organizations/settings/audit and assignment-scoped nursing. The frontend exposes authenticated live-data portals for each role.
+Enterprise roles are `super_admin`, `hospital_manager`, `nurse`, `pharmacist`, `lab_technician`, `radiologist`, `accountant`, `insurance_officer`, and `ambulance_staff`. Hospital Manager is a read-only hospital-operations role; it monitors patient flow, appointments, staffing, doctors, departments, reports, and revenue summaries without accessing clinical, financial-transaction, or specialist operational modules. Pharmacist is an exact-role pharmacy operator with read-only access to Admin-owned medicine/category/supplier master data and doctor prescriptions, a separate prescription-verification state machine, shared batch stock receipt/adjustments, and atomic dispensing. Lab Technician is an exact-role laboratory operator with assignment-scoped orders, guarded sample/test transitions, draft results, and immutable finalized results. Radiologist is an exact-role imaging operator with assignment-scoped orders, one study per order, guarded interpretation/report transitions, and immutable finalized report versions with explicit amendments. Accountant is an exact-role finance operator with appointment-backed invoices, duplicate-safe payments, append-only audited expenses, and non-clinical financial reporting. Insurance Officer is an exact-role insurance operator with policy verification, one claim per invoice, guarded review/decision/settlement transitions, required-document tracking, and immutable officer-attributed action history. Ambulance Staff is an exact-role transport operator with assigned vehicles, shared pending requests, staff-owned trips, guarded status transitions, and audited history. The other backend modules cover organizations/settings/audit and assignment-scoped nursing. The frontend exposes authenticated live-data portals for each role.
 
 The active application is the nested repository at `Hospital-Management-System/`. Python files named `generate_*.py`, `setup_*.py`, and frontend refactoring scripts are development/scaffolding utilities; they are not part of the runtime request path.
 
 ### 1.1 Latest implemented changes
 
+- Admin now owns pharmacy suppliers, medicine categories, and medicine master records through `/admin/pharmacy`. The backend uses the Admin-only `pharmacy.master.manage` permission, normalized duplicate checks, active/inactive status controls, input validation, transactional category creation, and audit events for every master-data mutation.
+- Admin Pharmacy Management is organized into dedicated `/admin/pharmacy/medicines`, `/admin/pharmacy/categories`, and `/admin/pharmacy/suppliers` pages. Each provides entity-specific search/filtering, modal create/edit forms, status badges, confirmation-gated activation/deactivation, loading/error/empty states, and toast feedback; category medicine counts are calculated from live medicine records.
+- Admin and Pharmacist stock receipt now share one validation/service path and the same `medicine_batch`/`stock_transaction` ledger. Both require an active medicine in an active category, an active supplier, a future expiry date, positive quantity, and a unique medicine/batch-number pair; Admin-entered stock appears directly in the Pharmacist inventory without a second receipt.
+- Pharmacy stock status is computed from actual remaining batch quantities, each medicine's `minimum_stock_level`, and configurable expiry windows. The inventory exposes a summary, category/supplier/status filters, empty and expired batch history, and a 30-second visibility-aware refresh. Minimum stock is an alert threshold and never creates physical stock.
+- Pharmacist Operations now uses Doctor-authored prescribed quantities, validates a matching active medicine and sufficient usable stock before readiness, and requires the exact prescribed quantity during the current one-shot dispensing workflow. Expired, empty, inactive-medicine, inactive-category, inactive-supplier, mismatched, insufficient, and duplicate dispensing attempts are rejected server-side.
+- The Pharmacist dispensing page now separates the ready queue from enriched recent history showing Patient, medicine, batch, quantity, Pharmacist, and timestamp. Prescription review and final dispensing use confirmation dialogs and toast feedback; inventory adjustments use a focused audited modal and physical count corrections can explicitly record zero stock.
+- The Admin medicine form includes a frontend-only reference catalog of at least 90 medicine/formulation suggestions grouped by specialty. Suggestions can populate generic name, category, and unit, but they are not database seed data, prescribing authorization, dosing advice, or a complete formulary; custom values remain supported and `docs/pharmacy-catalog.md` documents the safety boundary.
+- Migration `20260908_0015` adds nullable JSON `medicine.specializations` discovery metadata without seeding business records. Migration `20260908_0016` adds active/inactive states to categories and suppliers, per-medicine minimum stock levels, and unique names after refusing normalized duplicates; it also removes only unreferenced legacy `FORM-*` reference rows. Migration `20260910_0017` adds a nullable, positive prescribed quantity for legacy-compatible safe dispensing; every newly created prescription requires the value.
+- Database initialization and Docker Compose bootstrap exactly one environment-owned Super Admin from `SUPER_ADMIN_*` settings. The operation is idempotent, verifies identity conflicts, and securely synchronizes the configured password without creating demo/business data.
 - `super_admin` is now a standalone platform role and no longer inherits Admin or Hospital Manager access. Exact backend role guards separate `/super-admin/*` from `/admin/*` and `/admin/employees/*`.
 - Super Admin and Admin layouts and sidebars are separated. Middleware provides an early role-cookie redirect, while live layout checks and FastAPI dependencies remain authoritative.
 - Login homes are centralized for all thirteen roles. An authenticated Admin visiting `/super-admin/*` is redirected to `/admin/home`; Super Admin is redirected away from `/admin/*`.
@@ -77,7 +86,7 @@ The active application is the nested repository at `Hospital-Management-System/`
 - MySQL through the PyMySQL driver
 - Alembic for versioned schema migrations
 - Dockerfiles for frontend and backend
-- Docker Compose services for MySQL, Redis, a one-shot Alembic migrator, FastAPI, Celery, and Next.js
+- Docker Compose services for MySQL, Redis, one-shot migration/Super-Admin bootstrap, FastAPI, Celery, Next.js, and opt-in reset/clean-database verification tools
 
 ## 3. Repository layout
 
@@ -89,7 +98,7 @@ Hospital-Management-System/
 │   │   ├── models/            # SQLAlchemy models
 │   │   ├── routers/           # FastAPI route modules
 │   │   ├── schemas/           # Pydantic request/response models
-│   │   ├── services/          # SMTP email service
+│   │   ├── services/          # Account, audit, email, notification, and pharmacy stock services
 │   │   ├── database.py        # Engine, session factory, Base, get_db
 │   │   └── main.py            # FastAPI app and router registration
 │   ├── .env.example
@@ -101,9 +110,11 @@ Hospital-Management-System/
 │   ├── reset_db.py
 │   ├── setup_docker_db.py
 │   ├── requirements.txt
+│   ├── tests/
 │   └── Dockerfile
 ├── database/
 │   └── schema.sql             # Baseline SQL schema; see migration caveat below
+├── docs/                      # Operational/design notes, including pharmacy catalog boundaries
 ├── frontend/
 │   ├── app/
 │   │   ├── (auth)/            # Login, registration, verification, password reset
@@ -114,10 +125,13 @@ Hospital-Management-System/
 │   │   └── insurance/, ambulance/
 │   ├── components/            # Shared dashboards, forms, polling, receipts, toasts
 │   ├── lib/                   # Authenticated API helper and UI permission helper
+│   ├── tests/
 │   ├── package.json
 │   └── Dockerfile
 ├── docker-compose.yml
+├── context.md                 # Implementation-oriented source-of-truth context
 ├── import_schema.py
+├── product.md
 └── README.md
 ```
 
@@ -229,6 +243,7 @@ The frontend stores the backend-calculated effective permission list in an HttpO
 | View own prescriptions | Yes | No dedicated list | No | No dedicated list |
 | Collect payment | No | No | With billing permission | Yes |
 | Manage doctors/employees | No | No | No | Yes |
+| Manage pharmacy master data | No | No | No | Yes |
 | View financial report | No | No | No current UI/API despite permission field | Yes |
 
 Enterprise roles have dedicated route groups and backend APIs. Operational roles receive only their explicit permission sets and do not inherit administrative access. `/portal` remains only as a compatibility redirect for old bookmarks.
@@ -381,6 +396,23 @@ All endpoints are under the FastAPI service at port `8000`. Except where marked 
 
 The Staff Accounts screen uses `/admin/staff` as the consolidated workflow. The legacy `/admin/employees` API remains for receptionist-specific profile/status and permission operations. The unused `/receptionists/` placeholder router has been removed.
 
+### Admin pharmacy master (`/admin/pharmacy`)
+
+Every endpoint requires the `admin` role and `pharmacy.master.manage`. Pharmacists can read the active master data needed for operations through `/pharmacy/*`, but cannot create or edit it.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/admin/pharmacy/specializations` | List distinct Doctor specializations for medicine discovery metadata |
+| GET/POST | `/admin/pharmacy/suppliers` | Search/filter suppliers or create a validated active/inactive supplier |
+| PATCH | `/admin/pharmacy/suppliers/{id}` | Edit or soft-activate/deactivate a supplier |
+| GET/POST | `/admin/pharmacy/categories` | Search/filter medicine categories or create one |
+| PATCH | `/admin/pharmacy/categories/{id}` | Edit or soft-activate/deactivate a category |
+| GET/POST | `/admin/pharmacy/medicines` | Search/filter medicines or create one with an existing/new active category |
+| PATCH | `/admin/pharmacy/medicines/{id}` | Edit medicine metadata, threshold, category, specialties, or status |
+| POST | `/admin/pharmacy/inventory` | Receive a validated batch into the shared pharmacy stock ledger |
+
+Names are normalized and rejected case-insensitively when duplicated; database constraints remain the concurrency backstop. Creating a medicine with a new category and its audit records occurs in one transaction. Categories and suppliers are retained with inactive status instead of delete endpoints so historical batches remain attributable.
+
 ### Nursing (`/nurse`)
 
 Every endpoint in this router requires the exact `nurse` role. Patient, appointment, vital, note, and task reads are limited to patients with an active task assigned to the current Nurse.
@@ -404,21 +436,26 @@ Active Nurse assignments are exactly `pending` and `in_progress`; only `pending 
 
 ### Pharmacy (`/pharmacy` API)
 
-Every endpoint requires the exact `pharmacist` role and a focused pharmacy permission. Pharmacy reads join prescriptions to the patient, appointment, and prescribing doctor without allowing mutation of the doctor's prescription row.
+Every endpoint requires the exact `pharmacist` role and a focused pharmacy permission. Pharmacy reads join prescriptions to the patient, appointment, and prescribing doctor without allowing mutation of the doctor's prescription row. Supplier, category, and medicine mutation has moved to the Admin-only `/admin/pharmacy` router; the former Pharmacist POST routes for those records are no longer available.
 
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/pharmacy/dashboard` | Pending/ready prescription counts, stock alerts, today's dispensing, and recent prescriptions |
 | GET | `/pharmacy/prescriptions` | Search/filter read-only doctor prescriptions with pharmacy workflow status |
-| GET | `/pharmacy/prescriptions/{id}` | Read prescription, patient, doctor, dosage, instructions, and pharmacy status |
-| POST | `/pharmacy/prescriptions/{id}/action` | Guarded `pending → verified → ready_for_dispensing` flow or rejection with a required reason |
-| GET/POST | `/pharmacy/inventory` | List computed stock states or add a non-expired medicine batch |
+| GET | `/pharmacy/prescriptions/{id}` | Read prescription, patient, doctor, quantity, dosage, instructions, review attribution, live availability, and pharmacy status |
+| POST | `/pharmacy/prescriptions/{id}/action` | Guarded `pending → verified → ready_for_dispensing` flow with completeness/availability checks, or rejection with a required reason |
+| GET | `/pharmacy/categories`, `/pharmacy/suppliers`, `/pharmacy/medicines` | Read only active Admin-managed master data; medicines also require an active category |
+| GET | `/pharmacy/inventory/summary` | Count active medicines, actual stock, low-stock medicines, and expiring/expired batches |
+| GET/POST | `/pharmacy/inventory` | List computed batch states/history or receive a batch for an active medicine and supplier |
 | POST | `/pharmacy/inventory/{batch_id}/adjust` | Audited add/count/expired/damaged stock adjustment |
 | GET | `/pharmacy/alerts` | Low-stock, expiring, and expired batch alerts |
-| GET | `/pharmacy/dispensings` | Recent pharmacy dispensing records |
-| POST | `/pharmacy/dispense` | Atomically lock stock, validate readiness/medicine/expiry/availability, reduce inventory, and finalize once |
+| GET/POST | `/pharmacy/purchases` | List or receive multi-item purchases when the separate `pharmacy.purchase` permission is granted |
+| GET | `/pharmacy/dispensings` | Recent dispensing history enriched with Patient, medicine, batch, quantity, Pharmacist, and timestamp |
+| POST | `/pharmacy/dispense` | Atomically lock stock, validate readiness/master status/medicine/expiry/quantity/availability, reduce inventory, and finalize once |
 
-`pharmacy_prescription_reviews` stores pharmacy metadata separately from `prescriptions`. A unique dispensing constraint and guarded API return `409` for duplicate attempts. Each dispensing audit includes pharmacist, prescription, medicine, batch, quantity, and time. Pharmacist has only `pharmacy.view`, `pharmacy.inventory`, and `pharmacy.dispense`; generic patient, prescription-writing, billing, insurance, laboratory, radiology, and administrative permissions are absent.
+`pharmacy_prescription_reviews` stores pharmacy metadata separately from `prescriptions`. A unique dispensing constraint and guarded API return `409` for duplicate attempts. Each dispensing audit includes pharmacist, prescription, medicine, batch, quantity, and time. Stock receipt uses a shared service for Admin and Pharmacist, records a `purchase` stock transaction, and rejects inactive master data, expired stock, and duplicate medicine/batch pairs. Usable stock excludes expired batches and batches linked to inactive suppliers; low stock is calculated per active medicine in an active category using its threshold, and expiry classification uses `PHARMACY_EXPIRY_WARNING_DAYS`.
+
+Pharmacist's static role grants remain only `pharmacy.view`, `pharmacy.inventory`, and `pharmacy.dispense`; `pharmacy.purchase` exists but is not assigned by default. Generic patient, prescription-writing, billing, insurance, laboratory, radiology, pharmacy-master, and administrative permissions are absent.
 
 ### Laboratory (`/lab` API)
 
@@ -615,6 +652,10 @@ Permission-specific receptionist links use live effective permissions. Register,
 - `/admin/patients`: all patients
 - `/admin/appointments`: all appointments
 - `/admin/billing`: collected revenue, pending dues, recent transactions
+- `/admin/pharmacy`: pharmacy-management overview, live master-data totals, links to each dedicated area, and shared-ledger stock receipt
+- `/admin/pharmacy/medicines`: search/filter and manage medicine identity, category, unit, specialty discovery metadata, thresholds, and status
+- `/admin/pharmacy/categories`: search/filter categories, view live medicine counts, edit metadata, and confirm status changes
+- `/admin/pharmacy/suppliers`: search/filter supplier contacts, edit metadata, and confirm status changes
 
 ### Super Admin portal
 
@@ -660,11 +701,11 @@ The Nurse role has only focused nursing permissions (`nursing.view`, `nursing.re
 
 - `/pharmacist/home`: pending/ready prescriptions, low/out-of-stock medicine, today's dispensing, and pharmacy alerts
 - `/pharmacist/prescriptions`: searchable, filterable prescription review queue
-- `/pharmacist/prescriptions/[id]`: read-only patient/doctor/prescription detail with verify, reject-with-reason, and mark-for-dispensing actions
-- `/pharmacist/inventory`: medicine SKU/category/supplier setup, batch creation, computed stock status, and audited stock adjustments
-- `/pharmacist/dispensing`: ready-prescription stock selection and recent dispensing audit
+- `/pharmacist/prescriptions/[id]`: read-only patient/doctor/prescription detail with prescribed quantity, live availability, review attribution, and confirmation-gated verify/reject/ready actions
+- `/pharmacist/inventory`: searchable shared batch inventory, actual-stock summary, Admin/Pharmacist batch receipt, computed stock/expiry status, and audited stock adjustments
+- `/pharmacist/dispensing`: ready queue with required/available quantities, confirmation-gated batch dispensing, and enriched dispensing history
 
-The sidebar contains only Dashboard, Prescriptions, Dispensing, and Inventory. No diagnosis, prescription creation, consultation, patient registration, scheduling, hospital payment, accounting, insurance, lab, radiology, ambulance, or Admin pages are present. Exact live-role layout validation, middleware whitelisting, and exact-role API dependencies protect direct URLs.
+The inventory page reads Admin-owned medicine/category/supplier master data, refreshes visible data every 30 seconds and on focus, and shows existing remaining stock separately from a blank new-batch quantity. The sidebar contains only Dashboard, Prescriptions, Dispensing, and Inventory. No diagnosis, prescription creation, consultation, patient registration, scheduling, hospital payment, accounting, insurance, lab, radiology, ambulance, or Admin pages are present. Exact live-role layout validation, middleware whitelisting, and exact-role API dependencies protect direct URLs.
 
 ### Lab Technician portal
 
@@ -774,10 +815,23 @@ Central identity record.
 - Stores task title/description, priority, status, optional due/completion times, and created/updated timestamps
 - `pending` and `in_progress` grant assignment-scoped patient access; `completed` and `cancelled` are historical only
 
+### Pharmacy catalog and inventory
+
+- `medicine_category`: unique name, optional description, active/inactive status, and timestamps
+- `supplier`: unique name, optional contact details, active/inactive status, and timestamps
+- `medicine`: unique name and optional unique SKU, generic/category/unit/description fields, JSON specialty discovery tags, per-medicine minimum-stock alert level, active/inactive status, and timestamps
+- `medicine_batch`: unique medicine/batch-number pair, supplier, expiry, purchase/selling prices, original and available quantities, and nonnegative/upper-bound checks
+- `stock_transaction`: append-oriented purchase/dispense/adjustment/return movement with positive quantity, reason/reference, actor, and timestamp
+- `purchase`/`purchase_item`: supplier purchase header and batch-like item detail; the purchase routes require the non-default `pharmacy.purchase` permission
+- `pharmacy_prescription_reviews`: Pharmacist verification/readiness/rejection state stored separately from the Doctor-authored prescription
+- `dispensing`/`dispensing_item`: unique one-dispensing-per-prescription header plus immutable medicine/batch/quantity/price lines
+
+Specialty tags are discovery metadata only. Physical inventory exists only in `medicine_batch`; `minimum_stock_level` is an alert threshold, not quantity. Supplier/category/medicine records use status changes rather than delete endpoints so historical references remain intact.
+
 ### `prescriptions`
 
 - Required appointment foreign key
-- Diagnosis, one medicine string, `TEXT` dosage/directions, notes, creation timestamp
+- Diagnosis, one medicine string, nullable legacy-compatible positive prescribed quantity, `TEXT` dosage/directions, notes, creation timestamp
 - The current structure supports one medicine/dosage pair per prescription row
 
 ### `billing`
@@ -813,11 +867,16 @@ SQLAlchemy relationships and explicit cascade rules are not defined; joins are p
 Create `backend/.env` from `backend/.env.example`:
 
 ```env
-DATABASE_URL=mysql+pymysql://root:root@localhost/hospital_management
+DATABASE_URL=mysql+pymysql://hospital_app:replace-with-app-password@localhost/hospital_management
+MYSQL_ROOT_PASSWORD=replace-with-root-password
+MYSQL_DATABASE=hospital_management
+MYSQL_USER=hospital_app
+MYSQL_PASSWORD=replace-with-app-password
 SECRET_KEY=replace-with-a-long-random-secret
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=0
 FRONTEND_URL=http://localhost:3000
+HOSPITAL_TIMEZONE=Asia/Kolkata
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USERNAME=your_email@gmail.com
@@ -827,22 +886,26 @@ SMTP_FROM_NAME=Hospital Management System
 CORS_ORIGINS=http://localhost:3000
 CELERY_BROKER_URL=redis://localhost:6379/0
 CELERY_RESULT_BACKEND=redis://localhost:6379/1
+PHARMACY_EXPIRY_WARNING_DAYS=30
+PHARMACY_DEFAULT_LOW_STOCK_LEVEL=10
+APP_ENV=development
+SUPER_ADMIN_EMAIL=your-super-admin-email@example.com
+SUPER_ADMIN_PASSWORD=replace-with-a-strong-password
+SUPER_ADMIN_NAME=Super Admin
 ```
 
 Important details:
 
 - `DATABASE_URL` and `SECRET_KEY` are required; the backend no longer falls back to hard-coded credentials or an insecure JWT secret.
 - `ACCESS_TOKEN_EXPIRE_MINUTES=0` disables automatic JWT/cookie expiry for idle browser sessions. Use a positive minute count when a deployment requires timed sessions; live disabled-account and missing-profile checks still revoke access.
+- `PHARMACY_EXPIRY_WARNING_DAYS` controls the expiring-soon window. `PHARMACY_DEFAULT_LOW_STOCK_LEVEL` initializes new medicine thresholds; each saved medicine keeps its own editable threshold.
+- `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`, and `SUPER_ADMIN_NAME` are required by initialization/bootstrap commands. They identify the single environment-owned Super Admin; the password is hashed and synchronized idempotently.
+- `APP_ENV=production` disables the explicit database reset command. `HOSPITAL_TIMEZONE` defaults to `Asia/Kolkata` and is used for hospital-local time calculations.
 - Docker Compose uses the same `SECRET_KEY` and `ALGORITHM` names as runtime settings.
 - Use a Gmail App Password rather than a normal Gmail password when Gmail SMTP is selected.
 - Secrets and local environment files are ignored by Git; `.env.example` is intentionally tracked.
 
-For the root Docker Compose `.env`, database credentials are accompanied by these optional published-port settings:
-
-```env
-FRONTEND_PORT=3000
-BACKEND_PORT=8000
-```
+Docker Compose reads `backend/.env`, overrides only the database host to `db` inside containers, and currently publishes fixed host ports `3000` and `8000`. A direct local backend run must instead use a host-reachable database address such as `localhost` in `DATABASE_URL`.
 
 ### Frontend environment variable
 
@@ -874,9 +937,9 @@ python init_db.py
 uvicorn app.main:app --reload --port 8000
 ```
 
-Review `backend/.env` before initializing. `init_db.py` derives all connection details from `DATABASE_URL` and always applies the Alembic chain; it creates no users or demo data.
+Review `backend/.env` before initializing. `init_db.py` derives all connection details from `DATABASE_URL`, applies the Alembic chain, and idempotently creates or verifies the single configured Super Admin. It creates no clinical, operational, pharmacy, or other demo/business data.
 
-To bootstrap an administrator explicitly, set `ADMIN_NAME`, `ADMIN_ROLE` (`admin` or `super_admin`), `ADMIN_EMAIL`, and a strong `ADMIN_PASSWORD`, then run `python create_admin.py`. The script has no default credentials. It validates the email address, normalizes it to lowercase, and rejects duplicate users.
+To run only the Super Admin bootstrap, set `SUPER_ADMIN_NAME`, `SUPER_ADMIN_EMAIL`, and a strong `SUPER_ADMIN_PASSWORD`, then run `python create_admin.py`. This compatibility command is idempotent and refuses a conflicting email, a non-Super-Admin owner, or multiple existing Super Admin identities.
 
 ### Frontend
 
@@ -892,13 +955,13 @@ Open `http://localhost:3000`; FastAPI runs at `http://localhost:8000`.
 
 ### Database initialization choices
 
-- `python backend/init_db.py`: creates or upgrades the schema through Alembic without seed data.
+- `python backend/init_db.py`: creates/upgrades the schema through Alembic and idempotently bootstraps the configured Super Admin without business seed data.
 - `python import_schema.py`: compatibility command that delegates to `init_db.py`; direct legacy SQL import is disabled.
 - `python backend/migrate_auth.py`: compatibility alias for `alembic upgrade head`.
-- `python backend/setup_docker_db.py`: compatibility alias for `init_db.py`; it does not seed an admin.
-- `python backend/reset_db.py`: **destructive**; drops and recreates all ORM tables.
+- `python backend/setup_docker_db.py`: compatibility alias for `init_db.py`, including the environment-owned Super Admin bootstrap.
+- `python backend/reset_db.py --confirm-database <configured_name>`: **destructive and explicit**; outside production only, drops tables/views in the validated configured MySQL schema, migrates to head, and recreates only the configured Super Admin.
 
-Importing or starting FastAPI does not perform schema DDL. Docker Compose runs a one-shot `migrate` service before the backend and worker.
+Importing or starting FastAPI does not perform schema DDL. Docker Compose runs a one-shot `migrate` service before the backend and worker. The medicine reference catalog is frontend suggestion data and is not inserted by initialization or migration.
 
 ## 13. Docker behavior
 
@@ -910,14 +973,17 @@ docker compose up --build
 
 Current Compose topology:
 
-- frontend: `${FRONTEND_PORT:-3000}` on the host, container port 3000
-- backend: `${BACKEND_PORT:-8000}` on the host, container port 8000, with readiness checks
+- frontend: host/container port 3000
+- backend: host/container port 8000, with readiness checks
 - MySQL 8: internal `db` service with persistent `db_data`
 - Redis: Celery broker/result backend
 - migrate: one-shot `alembic upgrade head`
+- bootstrap: one-shot environment-owned Super Admin reconciliation after migration
 - worker: Celery notification worker
+- reset: opt-in `tools` profile for the guarded, explicitly confirmed database reset
+- verify-clean-db: opt-in `tools` profile that verifies a clean initialized database
 
-Before using Compose, copy `.env.example` to `.env`, provide strong `MYSQL_ROOT_PASSWORD`, `MYSQL_PASSWORD`, and `SECRET_KEY` values, and keep `NEXT_PUBLIC_API_URL` browser-reachable.
+Before using Compose, copy `backend/.env.example` to `backend/.env`, provide strong `MYSQL_ROOT_PASSWORD`, `MYSQL_PASSWORD`, `SECRET_KEY`, and `SUPER_ADMIN_PASSWORD` values plus the intended Super Admin identity, and keep `NEXT_PUBLIC_API_URL` browser-reachable.
 
 ## 14. Implementation conventions
 
@@ -949,7 +1015,7 @@ These are current implementation facts, not completed features:
 
 ### Data integrity and business rules
 
-- `database/schema.sql` is a legacy reference only and is no longer executed; the 14-revision Alembic chain through `20260905_0014` is authoritative.
+- `database/schema.sql` is a legacy reference only and is no longer executed; the 17-revision Alembic chain through `20260910_0017` is authoritative.
 - Core confirm/check-in/start/complete/cancel transitions are guarded, although a reusable state-machine abstraction is still absent.
 - Doctor slot conflicts are rejected for non-cancelled appointments.
 - Payment method is validated and repeat collection is idempotent for the original method.
@@ -957,6 +1023,7 @@ These are current implementation facts, not completed features:
 - Consultation prices come from each doctor's configured `consultation_fee`; the legacy receipt line-item split remains presentation-only.
 - Deleting or changing referenced records lacks an explicit retention/cascade policy.
 - Receipt-oriented `hospital_settings` can be read/created but have no update endpoint or Admin settings page. This is separate from the editable Super Admin `system_settings` key/value store.
+- The pharmacy suggestion catalog is maintained manually in `frontend/lib/pharmacyCatalog.ts`. It helps populate master-data fields but does not validate doses, contraindications, pediatric suitability, local availability, or prescribing rights.
 
 ### Frontend and user experience
 
@@ -1008,12 +1075,14 @@ At minimum, regression testing should cover:
 
 15. Patient books an appointment and the Patient, assigned Doctor, and active Receptionists receive role-scoped in-app notifications; a Doctor-assigned nursing task appears only for the selected Nurse, and read actions cannot modify another user's notification.
 
+16. Admin creates or reuses an active category, supplier, and medicine with a true minimum-stock threshold, receives two physical batches for the same medicine, and the Pharmacist sees the shared quantities without duplicating receipt; Pharmacist verifies a Doctor prescription with an explicit quantity, marks it ready only when usable stock is sufficient, dispenses from a valid batch atomically, and duplicate/expired/insufficient/inactive-master attempts fail without changing stock.
+
 ## 18. Current verification status
 
-- The working tree is based on branch `main` at `c56a199`; the changes summarized in section 1.1 and this reconciled context file are not yet committed.
-- Backend: 186 tests pass with one third-party Starlette/httpx deprecation warning. This includes migration, authorization, all-role login, default no-expiry JWT, explicit-expiry JWT, deleted/disabled session revocation, all-role staff contact/shift, Manager directory, the complete Doctor-to-Nurse assignment/history journey, role-scoped appointment/task notifications, notification ownership/read behavior, short-lived socket-ticket claims, and existing clinical/enterprise workflow coverage.
-- Frontend: all 13 role-routing authorization tests pass. Strict TypeScript, ESLint, and the optimized Next.js production build also pass; the authorization test command emits only Node's module-type performance warning.
-- The code migration head is guarded additive revision `20260905_0014`, which adds nullable, indexed, Doctor-referenced `nursing_tasks.created_by_doctor_id`; fresh and legacy migration tests pass. The configured local MySQL database still reports Alembic revision `20260826_0002`, while both `employees.contact` and the complete `created_by_doctor_id` column/index/foreign-key change have been applied and verified separately. The remaining migration chain must be reconciled before treating that database as code-head.
+- The working tree is based on branch `main` at committed revision `5cc16d0` with the Admin Pharmacy Management, Pharmacist Operations, and this context reconciliation currently uncommitted.
+- Backend: 199 tests pass with one third-party Starlette/httpx deprecation warning. Coverage includes migrations, authorization, all-role login/session revocation, staff/Manager/Doctor/Nurse/notification journeys, exact-role enterprise workflows, Admin-owned pharmacy master data, prescribed-quantity readiness/dispensing, shared Admin/Pharmacist stock, usable-stock metrics, enriched dispensing history, zero-count adjustments, active-only operational master reads, historical traceability, validation/rollback behavior, and role isolation.
+- Frontend: all 13 role-routing authorization tests and all 3 pharmacy catalog/quantity utility tests pass. Strict TypeScript, ESLint, and the optimized 83-page Next.js production build also pass. Node emits only the known module-type performance warning for direct TypeScript test execution; the successful build emits non-fatal webpack cache snapshot warnings in this local environment.
+- The code migration head is `20260910_0017`. It follows `20260908_0016` pharmacy master ownership with the nullable legacy-compatible `prescriptions.quantity` column and a positive-value check; fresh and legacy migration tests pass. The configured local MySQL database was not migrated during this implementation run.
 - Local backend `.env` and tracked `.env.example` use `ACCESS_TOKEN_EXPIRE_MINUTES=0`. Existing cookies/tokens created before this change require a fresh login after restarting the backend/frontend processes.
 - No default/demo Ambulance Staff, ambulance, request, trip, or patient data is created. Docker Compose services were not rebuilt during this latest reconciliation.
 - The last recorded `npm ci` audit reported 8 dependency vulnerabilities (7 high, 1 critical), including a warning that pinned Next.js `14.2.5` should be upgraded to a patched release. Dependency upgrades remain a separate compatibility/security task.

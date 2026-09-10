@@ -133,6 +133,7 @@ def test_consultation_uses_configured_decimal_fee_and_is_idempotent(
         "appointment_id": appointment.id,
         "diagnosis": "Stable",
         "medicine": "Medicine A",
+        "quantity": 10,
         "dosage": "Once daily",
     }
     auth = headers(login(doctor_user))

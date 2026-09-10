@@ -173,6 +173,7 @@ def test_consultation_requires_in_progress_and_creates_exactly_one_bill(
         "appointment_id": appointment.id,
         "diagnosis": "Viral infection",
         "medicine": "Medicine A",
+        "quantity": 10,
         "dosage": (
             "1 tablet after food, as needed for fever or body ache; follow the "
             "clinician directions and do not exceed the recommended daily dose."
@@ -189,6 +190,7 @@ def test_consultation_requires_in_progress_and_creates_exactly_one_bill(
     assert repeated.status_code == 201
     assert first.json()["id"] == repeated.json()["id"]
     assert first.json()["dosage"] == payload["dosage"]
+    assert first.json()["quantity"] == payload["quantity"]
     db.refresh(appointment)
     assert appointment.status == "completed"
     assert db.query(Prescription).filter_by(appointment_id=appointment.id).count() == 1
@@ -209,6 +211,7 @@ def test_non_doctor_cannot_start_or_complete_consultation(
         "appointment_id": appointment.id,
         "diagnosis": "Diagnosis",
         "medicine": "Medicine",
+        "quantity": 1,
         "dosage": "Daily",
     }
 

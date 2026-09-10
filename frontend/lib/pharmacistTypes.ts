@@ -9,6 +9,7 @@ export interface PharmacyPrescription {
   doctor_name: string
   diagnosis: string | null
   medicine: string | null
+  quantity: number | null
   dosage: string | null
   instructions: string | null
   prescription_date: string
@@ -16,6 +17,12 @@ export interface PharmacyPrescription {
   appointment_status: string
   pharmacy_status: PharmacyStatus
   rejection_reason: string | null
+  reviewed_by_name: string | null
+  reviewed_at: string | null
+  verified_by_name: string | null
+  verified_at: string | null
+  matched_medicine_id: number | null
+  available_quantity: number
   dispensing_id: number | null
 }
 
@@ -56,6 +63,8 @@ export interface InventoryBatch {
   category_name: string | null
   unit: string | null
   minimum_stock_level: number
+  medicine_status: 'active' | 'inactive' | null
+  category_status: 'active' | 'inactive' | null
   supplier_id: number | null
   supplier_name: string | null
   supplier_status: 'active' | 'inactive' | null
@@ -81,9 +90,16 @@ export interface DispensingRecord {
   id: number
   prescription_id: number
   patient_id: number
+  patient_name: string
+  medicine_id: number
+  medicine_name: string
+  batch_id: number
+  batch_number: string
+  quantity: number
   status: 'completed' | 'voided'
   dispensed_at: string
-  dispensed_by: number
+  pharmacist_id: number
+  pharmacist_name: string
 }
 
 export function pharmacyStatusLabel(status: string) {
